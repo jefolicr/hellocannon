@@ -491,44 +491,42 @@ if (typeof KeyEvent == "undefined") {
 //
 // Audio
 // 
-// Credit due: http://www.storiesinflight.com/html5/audio.html
-//
 
-const enable_audio = true;
+soundManager.url = 'lib/sm2/';
+// soundManager.useHTML5Audio = true;
+soundManager.useFlashBlock = false;
+soundManager.debugMode = false;
 
-const channel_max = 12; // number of channels
+var sounds = [];
+var soundstoplay = [];
+var audioready = false;
 
-const audiochannels = new Array();
-
-for (var i = channel_max; i-- > 0; ) { // prepare the channels
-    audiochannels[i] = new Array();
-    audiochannels[i]['channel'] = new Audio(); // create a new audio object
-    audiochannels[i]['finished'] = -1; // expected end time for this channel
-}
-
-function play_multi_sound(s) {
-    if (enable_audio == false)
-        return;
-    var thistime = new Date();
-    var mostchannel = null;
-    for (var i = channel_max; i-- > 0; ) {
-        if (!mostchannel || audiochannels[i]['finished'] < mostchannel['finished']) {
-            mostchannel = audiochannels[i];
-        }
+soundManager.onready(function() {
+    const soundnames = 'bonus adjustangle bullseye adjustpower firecannon sink'.split(' ');
+    for (var i = 0; i < soundnames.length; i++) {
+        sounds[soundnames[i]] = soundManager.createSound({
+            id: 'sound'+i,
+            url: 'wav/'+soundnames[i]+'.mp3',
+            onload: function() {
+                console.log(this.url+' is ready to play');
+            },
+            // other options here..
+        });
     }
-    mostchannel['finished'] = thistime.getTime() + document.getElementById(s).duration * 1000;
-    mostchannel['channel'].src = document.getElementById(s).src;
-    mostchannel['channel'].load();
-    mostchannel['channel'].play();
-}
+    audioready = true;
+});
 
-audiotoplay = new Array();
+soundManager.ontimeout(function() {
+    console.log("Hrmm, SM2 could not start.");
+});
+
 function push_multi_sound(s) {
-    audiotoplay.push(s);
-}
-function play_all_multi_sound() {
-    for (var i = 0; i < audiotoplay.length; i++)
-        play_multi_sound(audiotoplay[i]);
-    audiotoplay = new Array();
+    soundstoplay.push(s);
 }
 
+function play_all_multi_sound() {
+    for (var i = 0; i < soundstoplay.length; i++) {
+        sounds[soundstoplay[i]].play();
+    }
+    soundstoplay = [];
+}
