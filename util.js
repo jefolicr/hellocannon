@@ -11,6 +11,15 @@ Math.round = function(x, m) {
     return x - (x % m);
 }
 
+Math.sign = function(x) {
+    if (x < 0)
+        return -1;
+    else if (x > 0)
+        return 1;
+    else
+        return 0;
+}
+
 function randInt(n) {
     return Math.floor(Math.random() * n);
 }
@@ -39,8 +48,6 @@ function padl(s, c, newLength) {
 function msToString(ms) {
     ms = Math.floor(ms / 1000);
     var s = ''+(ms % 60);
-    if (ms < 60)
-        return s;
     ms = Math.floor(ms / 60);
     s = (ms % 60)+':'+padl(s, '0', 2);
     if (ms < 60)
@@ -103,16 +110,22 @@ Array.prototype.remove = function(object) {
 //
 
 CanvasRenderingContext2D.prototype.strokeCircle = function(x, y, radius) {
-    this.beginPath();
-    this.arc(x, y, radius, 0, Math.PI*2, false);
-    this.closePath();
-    this.stroke();
+    if (this.lineWidth * 0.5 >= radius) {
+        var fsBackup = this.fillStyle;
+        this.fillStyle = this.strokeStyle;
+        this.fillCircle(x, y, radius + this.lineWidth * 0.5);
+        this.fillStyle = fsBackup;
+    }
+    else {
+        this.beginPath();
+        this.arc(x, y, radius, 0, Math.PI*2, false);
+        this.stroke();
+    }
 }
 
 CanvasRenderingContext2D.prototype.fillCircle = function(x, y, radius) {
     this.beginPath();
     this.arc(x, y, radius, 0, Math.PI*2, false);
-    this.closePath();
     this.fill();
 }
 
@@ -120,11 +133,10 @@ CanvasRenderingContext2D.prototype.strokeLine = function(x0, y0, x1, y1) {
     this.beginPath();
     this.moveTo(x0, y0);
     this.lineTo(x1, y1);
-    this.closePath();
     this.stroke();
 }
 
-CanvasRenderingContext2D.prototype.fillRoundRect = function(x, y, w, h, r) {
+CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
     with (this) {
         beginPath();
         moveTo(x + r, y);
@@ -132,27 +144,143 @@ CanvasRenderingContext2D.prototype.fillRoundRect = function(x, y, w, h, r) {
         arcTo(x + w, y + h, x + w - r, y + h, r);
         arcTo(x, y + h, x, y + h - r, r);
         arcTo(x, y, x + r, y, r);
-        closePath();
+    }
+}
+
+CanvasRenderingContext2D.prototype.fillRoundRect = function(x, y, w, h, r) {
+    this.roundRect(x, y, w, h, r);
+    this.fill();
+}
+
+CanvasRenderingContext2D.prototype.strokeRoundRect = function(x, y, w, h, r) {
+    this.roundRect(x, y, w, h, r);
+    this.stroke();
+}
+
+CanvasRenderingContext2D.prototype.strokeRoundRectDarkSide = function(x, y, w, h, r) {
+    with (this) {
+        beginPath();
+        moveTo(x + r, y);
+        lineTo(x + w - r, y);
+        moveTo(x + w, y + r);
+        arcTo(x + w, y + h, x + w - r, y + h, r);
+        lineTo(x + r, y + h);
+        moveTo(x, y + h - r);
+        arcTo(x, y, x + r, y, r);
+        stroke();
+    }
+}
+
+CanvasRenderingContext2D.prototype.drawGlassBall = function(x, y, r, color, alpha) {
+    var rgb = new RGBColor(color);
+    var cr = rgb.r;
+    var cg = rgb.g;
+    var cb = rgb.b;
+    var ca = alpha;
+    var grad;
+    
+    // Draw black edge accent and glow.
+    grad = this.createRadialGradient(x, y, 0, x, y, r * 1.2);
+    grad.addColorStop(0.5, 'rgba('+cr+', '+cg+', '+cb+', '+(ca * 1.0)+')');
+    grad.addColorStop(0.75, 'rgba('+Math.floor(cr*0.925)+', '+Math.floor(cg*0.925)+', '+Math.floor(cb*0.925)+', '+(ca * 0.925 + 0.075)+')');
+    grad.addColorStop(0.8, 'rgba('+Math.floor(cr*0.875)+', '+Math.floor(cg*0.875)+', '+Math.floor(cb*0.875)+', '+(ca * 0.875 + 0.125)+')');
+    grad.addColorStop(0.833, 'rgba('+Math.floor(cr*0.775)+', '+Math.floor(cg*0.775)+', '+Math.floor(cb*0.775)+', '+(ca * 0.775 + 0.225)+')');
+    const ig = ca * 0.6; // Intensity of glow.
+    grad.addColorStop(0.843, 'rgba('+cr+', '+cg+', '+cb+', '+(ig * 1.0)+')');
+    grad.addColorStop(0.874, 'rgba('+cr+', '+cg+', '+cb+', '+(ig * 0.5)+')');
+    grad.addColorStop(0.915, 'rgba('+cr+', '+cg+', '+cb+', '+(ig * 0.24)+')');
+    grad.addColorStop(0.956, 'rgba('+cr+', '+cg+', '+cb+', '+(ig * 0.1)+')');
+    grad.addColorStop(1.0, 'rgba('+cr+', '+cg+', '+cb+', '+(ig * 0.0)+')');
+    this.fillStyle = grad;
+    this.fillCircle(x, y, r * 1.2);
+    
+    // Draw general shine.
+    const dl = 0.3; // Brightness.
+    grad = this.createRadialGradient(x - r * 0.4, y - r * 0.5, 0, x - r * 0.2, y - r * 0.25, r * 0.8);
+    grad.addColorStop(0.0, 'rgba(255, 255, 255, '+dl+')');
+    grad.addColorStop(1.0, 'rgba(255, 255, 255, 0.0)');
+    this.fillStyle = grad;
+    this.fillCircle(x - r * 0.2, y - r * 0.25, r * 0.8);
+    
+    // Draw reflection of light source.
+    const ld = 0.9; // Brightness.
+    x -= r * 0.35;
+    y -= r * 0.45;
+    grad = this.createRadialGradient(x, y, 0, x, y, r * 0.4);
+    grad.addColorStop(0.0, 'rgba(255, 255, 255, '+(1.0*ld)+')');
+    grad.addColorStop(0.05, 'rgba(255, 255, 255, '+(1.0*ld)+')');
+    grad.addColorStop(0.15, 'rgba(255, 255, 255, '+(0.9*ld)+')');
+    grad.addColorStop(0.4, 'rgba(255, 255, 255, '+(0.43*ld)+')');
+    grad.addColorStop(0.5, 'rgba(255, 255, 255, '+(0.2*ld)+')');
+    grad.addColorStop(0.6, 'rgba(255, 255, 255, '+(0.1*ld)+')');
+    grad.addColorStop(1.0, 'rgba(255, 255, 255, '+(0.0*ld)+')');
+    this.fillStyle = grad;
+    this.fillCircle(x, y, r * 0.4);
+}
+
+CanvasRenderingContext2D.prototype.fillPolygon = function(points) {
+    n = points.length;
+    if (n < 1)
+        return;
+    var p0 = points[0];
+    var p;
+    with (this) {
+        beginPath();
+        moveTo(p0.x, p0.y);
+        for (var i = 0; i < n; i++) {
+            p = points[i];
+            lineTo(p.x, p.y);
+        }
         fill();
     }
 }
 
-CanvasRenderingContext2D.prototype.strokeRoundRect = function(x, y, w, h, r) {
-    with (this) {
-        beginPath();
-        moveTo(x + r, y);
-        arcTo(x + w, y, x + w, y + r, r);
-        arcTo(x + w, y + h, x + w - r, y + h, r);
-        arcTo(x, y + h, x, y + h - r, r);
-        arcTo(x, y, x + r, y, r);
-        closePath();
-        stroke();
+CanvasRenderingContext2D.prototype.fillStar = function(x, y, r, rotation) {
+    this.fillStarGeneric(x, y, r * 0.382, r, rotation - Math.PI * 0.5, 5);
+}
+
+CanvasRenderingContext2D.prototype.fillStarGeneric = function(x, y, rInner, rOuter, rotation, numPoints) {
+    this.fillPolygon(generateStar(x, y, rInner, rOuter, rotation, numPoints));
+}
+
+function generateStar(x, y, rInner, rOuter, rotation, numPoints) {
+    const npoints = numPoints * 2;
+    var points = new Array();
+    
+    var angle = rotation;
+    const angleInc = Math.PI / numPoints;
+    var i = 0;
+    var dx, dy;
+    while (i < npoints) {
+        dx = x + Math.cos(angle) * rOuter;
+        dy = y + Math.sin(angle) * rOuter;
+        points.push(new Point(dx, dy));
+        angle += angleInc;
+        i++;
+
+        dx = x + Math.cos(angle) * rInner;
+        dy = y + Math.sin(angle) * rInner;
+        points.push(new Point(dx, dy));
+        angle += angleInc;
+        i++;
     }
+    
+    return points;
 }
 
 //
 // Geometry.
 //
+
+var Point = (function() {
+    
+    function Point(x, y) {
+        this.x = x;
+        this.y = y;
+    }
+    
+    return Point;
+})();
 
 function mag(dx, dy) {
     return Math.sqrt(dx * dx + dy * dy);
