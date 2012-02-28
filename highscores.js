@@ -89,16 +89,7 @@ function updateHighscores() {
 	});
 }
 
-function addGameScore(game) {
-	// Create score from game.
-	var score = {};
-	score.name = nameFieldValue.replace(/^\s+|\s+$/g,"");;
-	score.timeFinished = time();
-	score.timePlayed = score.timeFinished - timeGameStart;
-	score.eyes = eyesTotal;
-	score.gold = totalGoldWon;
-	score.shots = shots;
-	score.progress = progress;
+function addGameScore(score) {
 	
 	// Store new score locally.
 	var hs = JSON.parse(localStorage.getItem('scores'));

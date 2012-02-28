@@ -8,14 +8,8 @@
 // Does drawing a line to nowhere (point) draw faster than arcing a circle?
 //
 // TODO:
-// bosses
-// double radius of bullseyes
-// give colors of archery, for kix, only slightly (#fff535, #fd1b14, #41b7c8, #000000, #ffffff)
 // increase screen size at higher stages
-// make dialog boxes not shiny cuz it looks lame
-// make dialog boxes fade on/off (fast)
-// make bonuses always on top of targets (yay!)
-// make long shots have a change of getting a 'plain' bonus of +100
+// make long shots have a chance of getting a bonus of +100
 // make subtle radial gradient backgrounds for dialog boxes
 //
 
@@ -25,21 +19,25 @@
 var xShowFps = false;
 var xAlwaysTrajectory = false;
 var xAlwaysSink = false;
-var xAlwaysBonus = false;
-var xScoreNewStyle = false;
-var xPracticeShots = false;
 var xBrowseLevels = false;
-var xLevelRedo = false;
-var xJumpToStage = 1;
+var xLevelRedo = true;
+var xAlwaysShowPowerup = 0;
+var xJumpToStage = 0;
 var xFastPlay = false;
 var xInvincible = false;
 var xAlwaysShowBoss = false;
 var xFullscreen = false;
-var xShowCanvasEdges = false;
-var xDontDrawParticles = true;
+var xDrawCanvasBoundingBox = false;
+var xDontDrawParticles = false;
 var xMultipleShots = false;
 var xSlowPhysics = false;
 var xNoScreenDelays = true;
+var xPowerupsOverlayTargets = true;
+var debuginfo = '';
+var xShowLevelSummary = false;
+var xFadeOutCashBubbles = false;
+var xIndividualCashBubbles = false;
+var xEyeSetScoreImmediate = true;
 
 // UI.
 var gameCanvas;
@@ -63,10 +61,12 @@ var gameCanvasW = 420;
 var gameCanvasH = 420;
 var fontFace = "'Trebuchet MS', Helvetica, sans-serif";
 var layers;
-var showdebuginfo = '';
+var targetcolors = ["#fff535", "#fd1b14", "#41b7c8", "#000000", "#ffffff"];
+var dialogFadeTime = 250;
+var targetPopTime = 400;
 
 // Bounds.
-var shotRadius = 5;
+var shotRadius = 0;
 var ringWidthAvg = 5.2;
 var barHeight = 40;
 var cannonMinY = 25 + barHeight;
@@ -75,65 +75,89 @@ var targetMinX = 130;
 var targetMaxX = gameCanvasW - 10;
 var targetMinY = 10 + barHeight;
 var targetMaxY = gameCanvasH - 10;
+var cashX = 10;
+var cashY = 10;
 
 // Mechanics.
-var physics = xSlowPhysics ? 0.2 : 0.6;
+var physics = (xSlowPhysics ? 0.2 : 1) * 0.5;
 var gravity = 0.000336 * physics * physics;
-var angleSteps = 141; // Must be odd.
+var angleSteps = 141; // Should be odd so that cannon is able to be aligned perfectly horizontal.
 var fuelMax = 100;
 var fuelStepn = 5;
 var fuelSteps = (fuelMax / fuelStepn);
-var shotCost = 25;
-var starPowerTurns = 3;
-var eyePowerAmount = 4;
+var shotCost = 30;
+var starPowerLevels = 3;
+var eyePowerNumEyes = 4;
+var bigPowerNumShots = 4;
+var bigShotRadius = 16.0;
 var greenBalls = 4;
-var longShotTimeout = 15000;
 var levelRedoMax = 10;
 var shineAngle = 3.8;
+var giftEggBonus = 200;
+var eyeRunBonus = 25;
 
 // State.
 var tms; // total ms time
 var dms; // change ms time for current physics tick
 var slowAccum;
 var shots;
-var gold;
-var goldThisTurn;
+var cash;
+var cashWonThisLevel;
+var cashChangeThisLevel;
 var totalFuelUsed;
 var totalTargetHit;
-var totalGoldWon;
+var totalCashWon;
 var cannon;
-var shotStartTime;
 var trajectory;
 var fuelCost;
 var gobs;
 var particles;
 var perms;
 var isCannonFocused;
-var isCannonFired;
+var isShotFired;
+var gobsReadyToEndLevel;
+var humanReadyToEndLevel;
+var askIsHumanReadyToEndLevel;
+var timeOfLastFire;
 var timeOfAnyHit;
 var timeGameStart;
-var timeTurnStart;
+var timeLevelStart;
 var starPower;
+var numBigShots;
 var hitRun;
 var eyeRun;
 var hitsMade;
 var eyesMade;
 var eyesTotal;
 var numTargets;
-var numTargetBonuses;
+var numPowerups;
 var numSinks;
 var timePlayAdjustSound;
 var progress;
-var practiceShot;
 var stage;
 var firstLevelOfStage;
 var showOverHeadDisplay;
-var endingLongShot;
 var didOverShoot;
 var singleTarget;
-var turnOver;
 
 function initHellocannon() {
+	Sound.setsounds([
+		"powerup",
+		"adjustangle",
+		"D3",
+		"G3",
+		"B4",
+		"D4",
+		"G4",
+		"adjustpower",
+		"firecannon2",
+		"sink",
+		"targetpop",
+		"hitgiftegg",
+		"hitelectricegg",
+		"hitmainegg"
+	]);
+
 	Math.seedrandom(0);
 	gameCanvas = document.getElementById("hellocannon");
 	gameCanvas.key = -1;
@@ -150,9 +174,10 @@ function initHellocannon() {
 	fpsGraphics = Math.round(1000 / targetMspfGraphics);
 	frameCountGraphics = 0;
 	tTotalUpdateGraphics = 0;
-	layers = [];
 	gobs = [];
 	particles = [];
+	perms = [];
+	layers = [];
 	layers.push(new LayerGame());
 	
 	// Start engine.
@@ -214,29 +239,45 @@ function fitToScreen() {
 	g.lineTo(0, gameCanvasH);
 	g.clip();
 	
-	// Renderable scale equalization.
-	Renderable.prototype.scale = s;
-	
-	// Set other Renderable properties.
-	Renderable.prototype.showCanvasEdges = xShowCanvasEdges;
+	// Set Renderable properties.
+	Renderable.prototype.scaleOfAreaToDeviceForFocus = s;
+	Renderable.prototype.drawCanvasBoundingBox = xDrawCanvasBoundingBox;
 }
 
-function changeGold(g) {
-	gold += g;
+function changeCash(x, y, amt, special) {
+	if (amt > 0) {
+		cashWonThisLevel += amt;
+	}
+	cashChangeThisLevel += amt;
+	var bubble;
+	if (!xIndividualCashBubbles) {
+		if (special) {
+			bubble = new CashBubble(x, y - 20, amt, special);
+			particles.push(bubble);
+		}
+		else {
+			bubble = new CashBubble(x, y - 20, amt, true);
+		}
+	}
+	else {
+		bubble = new CashBubble(x, y - 20, amt, special);
+		particles.push(bubble);
+	}
+	return bubble
 }
 
 function setFont(f /*, color, align */) {
 	g.font = (typeof f === "number")
 		? "bold " + f + "pt " + fontFace
 		: f;
-	g.fillStyle = arguments[1] || "#000";
-	g.textAlign = arguments[2] || "left";
+	g.fillStyle = firstdefined(arguments[1], "#000");
+	g.textAlign = firstdefined(arguments[2], "left");
 }
 
 function setLine(width /*, color, cap */) {
 	g.lineWidth = width;
-	g.strokeStyle = arguments[1] || "#000";
-	g.lineCap = arguments[2] || "butt";
+	g.strokeStyle = firstdefined(arguments[1], "#000");
+	g.lineCap = firstdefined(arguments[2], "butt");
 }
 
 function onKeyPress(e) {
@@ -260,24 +301,6 @@ function onKeyRelease(e) {
 		}
 	}
 }
-
-(function () {
-	// Courtasy of paulirish.com
-	// shim layer with setTimeout fallback
-
-	function fallbackRequestAnimationFrame(/* function */ callback, /* DOMElement */ element) {
-		window.setTimeout(callback, targetMspfGraphics);
-	}
-
-	window.requestAnimFrame = (function() {
-		return  window.requestAnimationFrame		|| 
-				window.webkitRequestAnimationFrame || 
-				window.mozRequestAnimationFrame	|| 
-				window.oRequestAnimationFrame	  || 
-				window.msRequestAnimationFrame	 || 
-				fallbackRequestAnimationFrame;
-	})();
-})();
 
 function animatePhysics() {
 	if (xFastPlay) {
@@ -345,7 +368,7 @@ function updateGraphics() {
 function stepPhysics() {
 	// Timing / slowing.
 	dms = targetMspfPhysics;
-	var slowFactor = (tms - timeOfAnyHit) / 120;
+	var slowFactor = (tms - timeOfAnyHit) / 80;
 	if (slowFactor < 1) {
 		slowFactor = Math.max(0.05, slowFactor);
 		slowAccum -= slowFactor;
@@ -373,41 +396,65 @@ function drawGraphics() {
 	});
 	
 	// Audio.
-	play_all_multi_sound();
+	Sound.playall();
 }
 
-var blankStage = function() {
+var setStage1 = function() {
 	// Do nothing.
 };
 
 var setStage2 = function() {
 	var p = randXY();
-	var g = new BossEgg(p[0], p[1]);
+	var g = new GiftEgg(p[0], p[1]);
+	gobs.push(g);
+	perms.push(g);
+}
+
+var setStage3 = function() {
+	var p = randXY();
+	var g = new ElectricEgg(p[0], p[1]);
+	gobs.push(g);
+	perms.push(g);
+}
+
+var setStage4 = function() {
+	var p = randXY();
+	var g = new MainEgg(p[0], p[1]);
+	gobs.push(g);
+	perms.push(g);
+}
+
+var setStage5 = function() {
+	var p = randXY();
+	var g = new MainEgg(p[0], p[1]);
+	gobs.push(g);
+	perms.push(g);
+}
+
+var setStage6 = function() {
+	var p = randXY();
+	var g = new MainEgg(p[0], p[1]);
 	gobs.push(g);
 	perms.push(g);
 }
 
 var stages = (function() {
 	var stages = table([
-		['level', 'medal',     'boss'],
-		[0,       "Wooden",    blankStage],
-		[10,      "Bronze",    setStage2],
-		[30,      "Silver",    blankStage],
-		[60,      "Gold",      blankStage],
-		[100,     "Platinum",  blankStage],
-		[130,     null,        blankStage],
-		[200,     null,        blankStage],
-		[300,     null,        blankStage],
-		[500,     null,        blankStage],
-		[1000,    null,        blankStage],
+		['level',  'medal',     'boss'],
+		[0,        "",          setStage1],
+		[10,       "Wooden",    setStage2],
+		[30,       "Bronze",    setStage3],
+		[60,       "Silver",    setStage4],
+		[100,      "Gold",      setStage5],
+		[150,      "Platinum",  setStage6],
 	]);
 	
 	forNum(stages.length, function(i) {
 		var s = stages[i];
-		s['stage'] = i + 1;
+		s.stage = i + 1;
 		var next = stages[i + 1];
-		s['numlevels'] = (next != undefined)
-			? next['level'] - s['level']
+		s.numLevels = (next != undefined)
+			? next.level - s.level
 			: -1;
 	});
 	
@@ -419,12 +466,12 @@ function newGame() {
 	perms = [];
 	gobs = [];
 	particles = [];
-	shots = stages[xJumpToStage]['level'];
-	gold = 200;
+	shots = stages[xJumpToStage].level;
+	cash = 200;
 	isCannonFocused = false;
 	totalFuelUsed = 0;
 	totalTargetHit = 0;
-	totalGoldWon = 0;
+	totalCashWon = 0;
 	cannon = new Cannon();
 	trajectory = new Trajectory();
 	cannon.fuelStep = Math.floor(fuelSteps * 0.5);
@@ -434,45 +481,27 @@ function newGame() {
 	timeGameStart = time();
 	progress = (timeGameStart & 0xffffffff);
 	starPower = 0;
+	numBigShots = 0;
 	hitRun = 0;
 	eyeRun = 0;
 	eyesTotal = 0;
 	slowAccum = 1;
 	beginGame();
 	isCannonFocused = true;
-	changeAngle(1);
-	changeAngle(1);
-	changeAngle(1);
-	changeAngle(1);
-	changeAngle(1);
-	changeAngle(1);
-	changeAngle(1);
-	changeAngle(1);
-	changeAngle(1);
-	// changeFuel(1);
-	// changeFuel(1);
-	// changeFuel(1);
-	// changeFuel(1);
-	// changeFuel(1);
-	// changeFuel(1);
-	// changeFuel(1);
-	// changeFuel(1);
-	// changeFuel(1);
+	changeAngle(4);
+	changeFuel(-1);
 	isCannonFocused = false;
 }
 
-function retryShot() {
-	turnOver = false;
+function retryLevel() {
 	isCannonFocused = true;
-	isCannonFired = false;
+	isShotFired = false;
 	shots--;
 }
 
-function nextShot() {
-	turnOver = false;
+function nextLevel() {
 	isCannonFocused = true;
-	isCannonFired = false;
-	goldThisTurn = 0;
+	isShotFired = false;
 	gobs = [];
 	particles = [];
 	var nextStageVal = stages.lastval(function(v) {
@@ -484,34 +513,48 @@ function nextShot() {
 	if (firstLevelOfStage)
 		beginStage()
 	else
-		beginShot();
+		beginLevel();
 }
 
-function beginShot() {
-	var boss;
+var asdf = false;
+
+function beginLevel() {
+	// Reset level state.
+	gobsReadyToEndLevel = false;
+	humanReadyToEndLevel = false;
+	askIsHumanReadyToEndLevel = false;
+	humanReadyToEndLevel = false;
+	showOverHeadDisplay = true;
+	cashWonThisLevel = 0;
+	cashChangeThisLevel = 0;
+	hitsMade = 0;
+	eyesMade = 0;
+	timeLevelStart = tms;
+	timeOfLastFire = undefined;
+	
+	// Begin new stage.
 	if (firstLevelOfStage)
 		stages[stage - 1]['boss']();
-	endingLongShot = false;
-	showOverHeadDisplay = true;
+	
+	// Random cannon position.
 	cannon.dx = 0;
-	practiceShot = (shots < 4) & xPracticeShots;
-	if (practiceShot)
-		declarePracticeShot();
 	if (shots < 10)
 		cannon.dy = cannonMinY + 2 * 0.3333 * (cannonMaxY - cannonMinY);
 	else
 		cannon.dy = cannonMinY + randInt(cannonMaxY - cannonMinY);
+	
+	// Random gob amounts.
 	numSinks = xAlwaysSink ? 1 : 0;
 	numTargets = 1;
-	numTargetBonuses = xAlwaysBonus ? 1 : 0;
+	numPowerups = xAlwaysShowPowerup ? 1 : 0;
 	if (30 <= shots && rand() < 0.16)
 		numSinks = (60 <= shots && rand() < 0.165) ? 2 : 1;
 	if (10 <= shots && shots < 30 && rand() < 0.35)
 		numTargets = 2;
 	if (30 <= shots && rand() < 0.16)
 		numTargets = (30 <= shots && rand() < 0.155) ? 10 : 3;
-	if (10 <= shots && rand() < 0.09)
-		numTargetBonuses = 1;
+	if (10 <= shots && rand() < 0.10)
+		numPowerups = 1;
 	if (firstLevelOfStage)
 		numTargets += stage - 1;
 	if (xAlwaysTrajectory)
@@ -520,56 +563,37 @@ function beginShot() {
 		if (rand() < 0.5)
 			numTargets++;
 		if (rand() < 0.09)
-			numTargetBonuses++;
+			numPowerups++;
 	});
+	if (xPowerupsOverlayTargets) {
+		if (numTargets < numPowerups)
+			numTargets = numPowerups;
+		numTargets -= numPowerups;
+	}
+	
+	// Initialize gobs.
 	forNum(numTargets, createTarget);
 	// Save single target for tracking over/under shot.
 	singleTarget = (shots <= levelRedoMax && numTargets == 1)
 		? gobs[gobs.length - 1]
 		: null;
-	forNum(numTargetBonuses, createTargetBonus);
+	forNum(numPowerups, createPowerup);
 	forNum(numSinks, createSink);
 	gobs.push(trajectory);
 	gobs.push(cannon);
-	hitsMade = 0;
-	eyesMade = 0;
-	timeTurnStart = tms;
-	var livePerms = [];
+	
+	// Refresh perms.
+	var liveStill = [];
 	perms.forEach(function(v) {
 		if (!v.dead) {
-			livePerms.push(v);
+			liveStill.push(v);
 			gobs.push(v);
 		}
 	});
-	perms = livePerms;
-}
-
-function randXY() {
-	return [
-		targetMinX + randInt(targetMaxX - targetMinX),
-		targetMinY + randInt(targetMaxY - targetMinY)
-	];
-}
-
-function targetSize() {
-	var sizes = table([
-		['level', 'nRings', 'ringWidth'],
-		[0,       4,        36.4],
-		[5,       4,        26.0],
-		[10,      3,        26.0],
-		[20,      3,        15.6],
-		[30,      3,        13.0],
-		[40,      3,        10.4],
-		[50,      3,        9.1],
-		[60,      2,        7.8],
-		[70,      2,        6.5],
-		[80,      2,        5.85],
-		[90,      2,        5.2],
-		[100,     1,        4.68],
-	]);
-	return sizes.lastval(function(x) {
-		return x['level'] <= shots;
-	});
+	perms = liveStill;
+	if (xBrowseLevels) {
+		perms = [];
+	}
 }
 
 function createSink() {
@@ -583,52 +607,78 @@ function createTarget() {
 	gobs.push(new Target(p[0], p[1], s.nRings, s.ringWidth));
 }
 
-function createTargetBonus() {
+function createPowerup() {
 	var p = randXY();
 	var s = targetSize();
-	var radius = 4 + s.ringWidth * (s.nRings - 0.75);
-	var bonus = (rand() < 0.5) ? 1 : 0;
-	gobs.push(new TargetBonus(p[0], p[1], radius, bonus));
+	var powerup = 1 + randInt(3);
+	var gobTar = new Target(p[0], p[1], s.nRings, s.ringWidth)
+	var gobPow = new Powerup(p[0], p[1], gobTar.radius, powerup);
+	gobPow.targetBuddy = gobTar;
+	gobs.push(gobTar);
+	gobs.push(gobPow);
 }
 
-function createPermBonus() {
-	var p = randXY();
-	var pb = new PermBonus(p[0], p[1]);
-	perms.push(pb);
-	gobs.push(pb);
+function randXY() {
+	return [
+		targetMinX + randInt(targetMaxX - targetMinX),
+		targetMinY + randInt(targetMaxY - targetMinY)
+	];
 }
 
-var Layer = (function() {
-	
-	function Layer() { }
-	
-	Layer.prototype.step = function() { }
-	Layer.prototype.draw = function() { }
-	Layer.prototype.onKeyPress = function(k) { return false; }
-	Layer.prototype.onKeyRelease = function(k) { return false; }
-	
-	return Layer;
-})();
+function targetSize() {
+	var sizes = table([
+		['level', 'nRings', 'ringWidth'],
+		[0,       5,        25],
+		[5,       5,        21],
+		[10,      4,        21],
+		[20,      4,        17.5],
+		[30,      3,        15],
+		[40,      3,        13],
+		[50,      3,        11],
+		[60,      2,        11],
+		[70,      2,        9.5],
+		[80,      2,        8.5],
+		[90,      2,        8],
+		[100,     1,        8],
+		[150,     1,        7.5],
+	]);
+	var s = sizes.lastval(function(x) {
+		return x.level <= shots;
+	});
+	return { nRings: s.nRings * 2, ringWidth: s.ringWidth * 0.5 };
+}
 
-var Gob = (function() {
-	
-	function Gob() { }
-	
-	Gob.prototype.step = function() { }
-	Gob.prototype.draw = function() { }
-	Gob.prototype.collide = function(that) { }
-	
-	return Gob;
-})();
+function computeRingCash(i, nRings) {
+	return [75,40,  20,15,  10,10,  5,5,  5,5][i];
+}
 
-var LayerGame = (function() {
-	
-	LayerGame.extend(Layer);
-	
-	var msCleanup;
+function eyeHitMade(x, y) {
+	eyesMade++;
+	eyesTotal++;
+	eyeRun++;
+	var bonus = (eyeRun - 1) * eyeRunBonus;
+	if (0 < bonus) {
+		changeCash(x, y, bonus, true);
+	}
+	particles.push(new Explosion(x, y, 5));
+}
 
-	function LayerGame() {
-		msCleanup = 0;
+var Layer = Class.extend({
+	step: function() {},
+	draw: function() {},
+	onKeyPress: function(k) { return false; },
+	onKeyRelease: function(k) { return false; }
+});
+
+var Gob = Class.extend({
+	step: function() { },
+	draw: function() { },
+	collide: function(that) { }
+});
+
+var LayerGame = Layer.extend({
+	init: function() {
+		this.msCleanup = 0;
 		this.dx = 0;
 		this.dy = 0;
 		
@@ -643,12 +693,12 @@ var LayerGame = (function() {
 				setFont(18, "#000", "center");
 				g.fillText(shots + " Shots", 100, 23);
 
-				// Draw gold.
+				// Draw cash.
 				setFont(18);
-				g.fillText(gold + " Gold", 250, 23);
-				if (gold <= 0) {
+				g.fillText(cash + "$", 250, 23);
+				if (cash <= 0) {
 					g.fillStyle = "#d00";
-					g.fillText(gold, 250, 23);
+					g.fillText(cash, 250, 23);
 				}
 				
 				// Draw star power.
@@ -656,11 +706,26 @@ var LayerGame = (function() {
 					g.save();
 					g.translate(200, 15);
 					g.fillStyle = "#000";
-					g.fillCircle(0, 0, 12);
+					g.fillCircle(0, 0, 12.5);
 					g.fillStyle = "#fc0";
-					g.drawStar(0, 0, 12, 0);
+					g.drawStar(0, 0, 12.5, 0);
 					g.restore();
 				}
+			}, this);
+		
+		this.cashchange = new Renderable(
+			new Bounds(0, 0, 100, 32),
+			function() {
+				var c = cashChangeThisLevel;
+				var color = c > 0 ? "#020" : "#200";
+				if (false) {
+					var d = numDigits(c);
+					g.fillStyle = "#000".alpha(0.2);
+					g.fillRoundRect(2, 2, 18 + d * 18, 30, 3);
+				}
+				setFont(18, color);
+				setLine(4, "#000", "round");
+				g.fillText(withSign(c), 10, 23);
 			}, this);
 		
 		this.fpsimage = new Renderable(
@@ -675,16 +740,18 @@ var LayerGame = (function() {
 			}, this);
 		
 		this.fireagainimage = new Renderable(
-			new Bounds(-150, -40, 300, 80),
+			new Bounds(-200, -50, 400, 100),
 			function() {
-				setFont(18, "#000", "center");
-				g.fillText("Fire again to continue.", 0, 0);
+				setFont(14, "#fff", "center");
+				setLine(6, "#000", "round");
+				g.strokeAndFillText("Fire again", 0, -10)
+				g.strokeAndFillText("to continue.", 0, 10);
 			}, this);
-	}
+	},
 	
-	LayerGame.prototype.step = function() {
-		if (0 < msCleanup) {
-			msCleanup -= 1000;
+	step: function() {
+		if (0 < this.msCleanup) {
+			this.msCleanup -= 1000;
 			var newParticleList = [];
 			particles.forEach(function(v) {
 				if (!v.dead)
@@ -692,19 +759,64 @@ var LayerGame = (function() {
 			});
 			particles = newParticleList;
 		}
-		msCleanup += dms;
-		if (xDontDrawParticles)
-			particles = [];
-		[gobs, particles].forEach(function(objectlist) {
+		this.msCleanup += dms;
+		
+		var drawables = xDontDrawParticles
+			? [gobs]
+			: [gobs, particles];
+		drawables.forEach(function(objectlist) {
 			objectlist.forEach(function(v) {
 				v.step();
 			});
 		});
-	};
+		
+		if (isShotFired && !gobsReadyToEndLevel) {
+			var ready = true;
+			gobs.forEach(function(v) {
+				if (v.shotNotEnded)
+					ready = false;
+			});
+			gobsReadyToEndLevel = ready;
+		}
+		
+		var longShotTimeout = 16000;
+		askIsHumanReadyToEndLevel = longShotTimeout < tms - timeOfLastFire;
+		
+		var endLevel;
+		if (xShowLevelSummary) {
+			endLevel = gobsReadyToEndLevel || humanReadyToEndLevel;
+		}
+		else {
+			askIsHumanReadyToEndLevel = askIsHumanReadyToEndLevel || gobsReadyToEndLevel;
+			endLevel = humanReadyToEndLevel;
+		}
+		
+		if (endLevel) {
+			if (xLevelRedo && shots <= levelRedoMax && cashWonThisLevel == 0) {
+				layers.push(new LayerRetryLevel());
+			}
+			else {
+				totalFuelUsed += fuelCost;
+				totalCashWon += cashWonThisLevel;
+				if (!hitsMade)
+					hitRun = 0;
+				if (!eyesMade)
+					eyeRun = 0;
+				isCannonFocused = false;
+				humanReadyToEndLevel = false;
+				if (xShowLevelSummary) {
+					layers.push(new LayerLevelSummary());
+				}
+				else {
+					finishLevel();
+				}
+			}
+		}
+	},
 	
-	LayerGame.prototype.draw = function() {
-		// If turn is just beginning.
-		if (tms - timeTurnStart < 200) {
+	draw: function() {
+		// If level is just beginning.
+		if (tms - timeLevelStart < 200) {
 			this.timeKeyPressLeft = undefined;
 			this.timeKeyPressRight = undefined;
 			this.timeKeyPressUp = undefined;
@@ -746,62 +858,61 @@ var LayerGame = (function() {
 		});
 		
 		if (showOverHeadDisplay) {
-			this.overhead.key = shots + ',' + gold + ',' + starPower;
-			this.overhead.draw();
+			this.overhead.key = shots + ',' + cash + ',' + starPower;
+			this.overhead.draw(0, 0);
+			
+			// Draw cash won this level.
+			if (isShotFired) {
+				this.cashchange.key = cashChangeThisLevel;
+				this.cashchange.draw(250, 0);
+			}
 		}
 
 		// Draw fps.
 		if (xShowFps) {
 			this.fpsimage.key = fpsPhysics + ',' + fpsGraphics;
-			this.fpsimage.draw();
+			this.fpsimage.draw(0, 0);
 		}
 		
 		// Debug Info.
-		if (showdebuginfo) {
+		if (debuginfo) {
 			setFont("20pt " + fontFace);
-			g.fillText(0.001 * Math.floor(showdebuginfo * 1000), 2, 40);
+			g.fillText(0.001 * Math.floor(debuginfo * 1000), 2, 40);
 		}
 		
-		if (isCannonFired && isCannonFocused && !xMultipleShots
-			&& (longShotTimeout < tms - shotStartTime)) {
-			
-			g.save();
+		if (askIsHumanReadyToEndLevel) {
 			var a = 2 * Math.PI * tms / 3000;
 			var radius = 4;
-			var ox = 200 + radius * Math.cos(a);
-			var oy = 100 + radius * Math.sin(a);
-			g.translate(ox, oy);
-			this.fireagainimage.draw();
-			g.restore();
+			var p = cart(a, radius);
+			this.fireagainimage.draw(160 + p[0], 290 + p[1]);
 		}
-	};
+	},
 
-	LayerGame.prototype.onKeyPress = function(k) {
+	onKeyPress: function(k) {
 		switch(k) {
 		case KeyEvent.DOM_VK_UP:	if (!this.timeKeyPressUp)	{ changeAngle(1);  this.timeKeyPressUp = tms;	} return true;
 		case KeyEvent.DOM_VK_DOWN:  if (!this.timeKeyPressDown)  { changeAngle(-1); this.timeKeyPressDown = tms;  } return true;
 		case KeyEvent.DOM_VK_LEFT:  if (!this.timeKeyPressLeft)  { changeFuel(-1);  this.timeKeyPressLeft = tms;  } return true;
 		case KeyEvent.DOM_VK_RIGHT: if (!this.timeKeyPressRight) { changeFuel(1);	this.timeKeyPressRight = tms; } return true;
 		case KeyEvent.DOM_VK_SPACE:
-			if (xBrowseLevels) {
-				shots++;
-				nextShot();
-				return;
-			}
-			if (isCannonFired && !xMultipleShots) {
-				if (longShotTimeout < tms - shotStartTime) {
-					endingLongShot = true;
-				}
+			if (askIsHumanReadyToEndLevel && !humanReadyToEndLevel) {
+				humanReadyToEndLevel = true;
 			}
 			else {
-				cannon.fire();
+				if (xBrowseLevels) {
+					shots++;
+					nextLevel();
+				}
+				else {
+					cannon.fire();
+				}
 			}
 			return true;
 		}
 		return false;
-	};
+	},
 
-	LayerGame.prototype.onKeyRelease = function(k) {
+	onKeyRelease: function(k) {
 		switch(k) {
 		case KeyEvent.DOM_VK_UP:	this.timeKeyPressUp = undefined; return true;
 		case KeyEvent.DOM_VK_DOWN:  this.timeKeyPressDown = undefined; return true;
@@ -809,10 +920,18 @@ var LayerGame = (function() {
 		case KeyEvent.DOM_VK_RIGHT: this.timeKeyPressRight = undefined; return true;
 		}
 		return false;
-	};
+	}
+});
 
-	return LayerGame;
-})();
+function finishLevel() {
+	cash += cashChangeThisLevel;
+	if (0 < cash || xInvincible) {
+		nextLevel();
+	}
+	else {
+		gameOver();
+	}
+}
 
 function changeAngle(n) {
 	if (!isCannonFocused)
@@ -827,7 +946,7 @@ function changeAngle(n) {
 		cannon.angle = Math.PI * (Math.floor(angleSteps / 2) - next) / angleSteps;
 		if (timePlayAdjustSound == undefined || 100 < time() - timePlayAdjustSound) {
 			timePlayAdjustSound = time();
-			push_multi_sound("adjustangle");
+			Sound.push("adjustangle");
 		}
 	}
 }
@@ -843,15 +962,12 @@ function changeFuel(n) {
 	if (prev != next) {
 		cannon.fuelStep = next;
 		cannon.fuel = (next + 1) * fuelStepn;
-		push_multi_sound("adjustpower");
+		Sound.push("adjustpower");
 	}
 }
 
-var Cannon = (function() {
-	
-	Cannon.extend(Gob);
-
-	function Cannon(dxi, dyi) {
+var Cannon = Gob.extend({
+	init: function(dxi, dyi) {
 		this.dx = dxi;
 		this.dy = dyi;
 		
@@ -885,58 +1001,56 @@ var Cannon = (function() {
 				setFont(10);
 				g.fillText(this.fuel, 0, 12);
 			}, this);
-	}
+	},
 
-	Cannon.prototype.draw = function() {
+	draw: function() {
 		this.image.key = this.angle + ',' + this.fuel;
-		this.image.draw();
-	};
+		this.image.draw(0, 0);
+	},
 	
-	Cannon.prototype.fire = function() {
-		if (practiceShot) {
-			declareNonPracticeShot();
-		}
-		else {
-			isCannonFired = true;
-			if (starPower)
-				starPower--;
-			shots++;
-			fuelCost = cannon.fuel;
-		}
+	fire: function() {
+		if (!xMultipleShots && isShotFired)
+			return;
+		isShotFired = true;
+		gobsReadyToEndLevel = false;
+		if (starPower)
+			starPower--;
+		shots++;
+		fuelCost = cannon.fuel;
 		var z = computeShotZeroState();
-		var shot = new Shot(practiceShot, z.dx, z.dy, z.vx, z.vy);
-		shotStartTime = tms;
+		var shotPower = numBigShots ? 1 : 0;
+		var shot = new Shot(z.dx, z.dy, z.vx, z.vy, shotPower);
+		if (numBigShots)
+			numBigShots--;
+		progress = ((progress * 485207) & 0xffffffff) ^ 385179316;
 		// Put shot before cannon and after targets.
 		gobs.remove(cannon);
 		gobs.push(shot);
 		gobs.push(cannon);
-		push_multi_sound("firecannon");
-		practiceShot = false;
+		Sound.push("firecannon2");
+		timeOfLastFire = tms;
+		var bx = cannon.dx + 23;
+		var by = cannon.dy + 52;
+		changeCash(bx, by, -fuelCost, true);
+		changeCash(bx, by + 25, -shotCost, true);
 	}
-
-	return Cannon;
-})();
+});
 
 function computeShotZeroState() {
 	var power = (0.06 + Math.pow(100 * cannon.fuel / fuelMax, 0.9) * 0.0084) * physics;
 	var angle = cannon.angle;
 	var lead = 20;
-	var ca = Math.cos(angle);
-	var sa = Math.sin(angle);
+	var p = cart(angle);
 	return {
-		dx: cannon.dx + lead * ca,
-		dy: cannon.dy + lead * sa,
-		vx: power * ca,
-		vy: power * sa
+		dx: cannon.dx + lead * p[0],
+		dy: cannon.dy + lead * p[1],
+		vx: power * p[0],
+		vy: power * p[1]
 	};
 }
 
-var Shot = (function() {
-	
-	Shot.extend(Gob);
-
-	function Shot(shotType, dxi, dyi, vxi, vyi) {
-		this.shotType = shotType;
+var Shot = Gob.extend({
+	init: function(dxi, dyi, vxi, vyi, power) {
 		this.dxPrev = dxi;
 		this.dyPrev = dyi;
 		this.dx = dxi;
@@ -947,13 +1061,13 @@ var Shot = (function() {
 		this.timeStuck = undefined;
 		this.timeFallenFromVision = undefined;
 		this.timeCreated = tms;
-		if (shotType == 0)
-			progress = ((progress * 485207) & 0xffffffff) ^ 385179316;
 		this.mass = 1;
-		this.radius = shotRadius;
-	}
+		this.radius = power ? bigShotRadius: shotRadius;
+		this.shotNotEnded = true;
+		this.power = power;
+	},
 
-	Shot.prototype.step = function() {
+	step: function() {
 		this.dxPrev = this.dx;
 		this.dyPrev = this.dy;
 		this.dx += this.vx * dms;
@@ -970,20 +1084,14 @@ var Shot = (function() {
 			this.timeFallenFromVision = undefined;
 		}
 		
-		// Check all conditions for end of turn.
+		// Check all conditions for end of level.
 		var outOfBoundsTime = numSinks ? 2000 : 500;
 		var stuckShotTimeout = 2500;
-		turnOver = turnOver || (this.timeStuck != undefined) && (stuckShotTimeout < tms - this.timeStuck);
-		turnOver = turnOver || (this.timeFallenFromVision != undefined) && (outOfBoundsTime < tms - this.timeFallenFromVision);
-		turnOver = turnOver || endingLongShot;
-		if (turnOver && !xMultipleShots) {
+		var levelOver = false;
+		levelOver = levelOver || (this.timeStuck != undefined) && (stuckShotTimeout < tms - this.timeStuck);
+		levelOver = levelOver || (this.timeFallenFromVision != undefined) && (outOfBoundsTime < tms - this.timeFallenFromVision);
+		if (levelOver) {
 			gobs.remove(this);
-			if (this.shotType == 0) {
-				if (xLevelRedo && shots <= levelRedoMax && goldThisTurn == 0)
-					layers.push(new LayerRetryShot());
-				else
-					layers.push(new LayerScore());
-			}
 		}
 				
 		// Collide with all game objects.
@@ -991,48 +1099,61 @@ var Shot = (function() {
 		gobs.forEach(function(v) {
 			v.collide(shot);
 		});
-	};
+	},
 
-	Shot.prototype.draw = function() {
+	draw: function() {
 		if (1500 < tms - this.timeStuck) {
 			if (!this.sunk)
-				push_multi_sound("sink");
+				Sound.push("sink");
 			this.sunk = true;
 		}
+		
 		if (this.sunk)
 			return;
-		var color = this.shotType == 0 ? "#000" : "#0a0";
-		var radius = this.radius;
+		
+		var color = this.power ? "#340" : "#000";
+		var radius = this.radius ? this.radius : 1.0;
+		
 		if (this.timeStuck != undefined) {
 			var delta = ((tms - this.timeStuck) / 1750);
 			color = color.shiftColor("#f00", delta);
 			radius = this.radius * (1 - delta * 0.2) + (this.radius * 0.2 * (rand() - 0.5));
 		}
 		
+		// Glow.
+		var c = "#860";
+		var r = radius + 20;
+		var grad = g.createRadialGradient(0, 0, 0, 0, 0, r);
+		grad.addColorStop(0.0, c.alpha(0.8));
+		grad.addColorStop(0.05, c.alpha(0.65));
+		grad.addColorStop(0.12, c.alpha(0.5));
+		grad.addColorStop(0.25, c.alpha(0.35));
+		grad.addColorStop(0.5, c.alpha(0.2));
+		grad.addColorStop(1.0, c.alpha(0.05));
+		g.fillStyle = grad;
+		g.fillCircle(0, 0, r);
+		
+		// Ball.
 		g.fillStyle = color;
 		g.fillCircle(0, 0, radius);
+		
+		// Shine.
 		g.fillStyle = "#fff";
 		g.fillCircle(-radius * 0.4, -radius * 0.4, radius * 0.2);
-	};
+	},
 	
-	Shot.prototype.scoring = function() {
-		return this.shotType == 0;
+	scoring: function() {
+		return 1;
 	}
+});
 
-	return Shot;
-})();
-
-var Target = (function() {
-	
-	Target.extend(Gob);
-
-	function Target(dxi, dyi, nRings, ringWidth) {
-		if (nRings == 1)
-			ringWidth = 0;
+var Target = Gob.extend({
+	init: function(dxi, dyi, nRings, ringWidth) {
+		this.crosshairs = false;
 		this.dx = dxi;
 		this.dy = dyi;
 		this.ringWidth = ringWidth;
-		this.radius = ringWidth * (nRings - 0.75);
+		this.radius = ringWidth * (nRings - 0.5);
 		this.hit = false;
 		this.rings = [];
 		forNum(nRings, function(i) {
@@ -1040,18 +1161,16 @@ var Target = (function() {
 		}, this);
 		this.popTime = xBrowseLevels ? 0 : tms + rand() * 800;
 		this.popSoundYet = false;
-	}
+	},
 
-	Target.prototype.draw = function() {
-		
-		var pop = (tms - this.popTime) / 400;
-		
+	draw: function() {
+		// Initial appearance: pop sound / scaling
+		var pop = (tms - this.popTime) / targetPopTime;
 		if (pop <= 0)
 			return;
-		
 		if (pop < 1) {
 			if (!this.popSoundYet) {
-				push_multi_sound("targetpop");
+				Sound.push("targetpop");
 				this.popSoundYet = true;
 			}
 			pop = 1 - (1 - pop) * (1 - pop);
@@ -1059,12 +1178,12 @@ var Target = (function() {
 		}
 		
 		// Draw rings.
-		this.rings.forEach(function(v, i) {
-			v.draw(i, this.ringWidth);
-		}, this);
+		for (var i = this.rings.length; i-- > 0; ) {
+			this.rings[i].draw(i, this.ringWidth);
+		}
 		
 		// Draw crosshairs.
-		if (this.rings.length == 1) {
+		if (this.crosshairs) {
 			if (this.rings[0].timeHit == undefined) {
 				g.save();
 				g.rotate(Math.PI * 0.25);
@@ -1092,17 +1211,11 @@ var Target = (function() {
 					[-w, -h]
 				]);
 				g.restore();
-//				var w = this.ringWidth;
-//				setLine(w * 0.5);
-//				g.strokeLine(-w, 0, 1.5 * -w, 0);
-//				g.strokeLine(w, 0, 1.5 * w, 0);
-//				g.strokeLine(0, -w, 0, 1.5 * -w);
-//				g.strokeLine(0, w, 0, 1.5 * w);
 			}
 		}
-	};
+	},
 
-	Target.prototype.collide = function(shot) {
+	collide: function(shot) {
 		if (!shot.scoring())
 			return;
 	
@@ -1125,9 +1238,34 @@ var Target = (function() {
 			var d = Math.sqrt(dSqrd);
 			this.rings.forEach(function(v, i) {
 				if (v.collide(shot, i, this.ringWidth, d)) {
+					timeOfAnyHit = tms;
+					var loot = computeRingCash(i, undefined);
+					var bub = changeCash(shot.dx, shot.dy, loot, false);
+					if (!xIndividualCashBubbles) {
+						if (this.bubble) {
+							this.bubble.amount += bub.amount;
+						}
+						else {
+							this.bubble = bub;
+							particles.push(bub);
+						}
+					}
+					
 					if (i == 0) {
 						eyeHitMade(this.dx, this.dy);
-						push_multi_sound("bullseye");
+						Sound.push("G4");
+					}
+					else if (i == 2) {
+						Sound.push("D4");
+					}
+					else if (i == 4) {
+						Sound.push("B4");
+					}
+					else if (i == 6) {
+						Sound.push("G3");
+					}
+					else if (i == 8) {
+						Sound.push("D3");
 					}
 				}
 			}, this);
@@ -1138,268 +1276,44 @@ var Target = (function() {
 				didOverShoot = (shot.dy < this.dy);
 			}
 		}
-	};
-
-	return Target;
-})();
-
-function eyeHitMade(x, y) {
-	eyesMade++;
-	eyesTotal++;
-	eyeRun++;
-	if (xScoreNewStyle) {
-		particles.push(new Explosion(x, y, eyeRun));
 	}
-	else {
-		if (1 < eyeRun) {
-			var eyeRunBonus = (eyeRun - 1) * 10;
-			goldThisTurn += eyeRunBonus;
-			particles.push(new Bonus(x, y - 29, eyeRunBonus, true));
-		}
-		particles.push(new Explosion(x, y, 5));
-	}
-}
+});
 
-var TargetBonus = (function() {
-	
-	TargetBonus.extend(Gob);
-
-	function TargetBonus(dxi, dyi, radius, bonusType) {
-		this.dx = dxi;
-		this.dy = dyi;
-		this.radius = radius;
-		this.bonusType = bonusType;
-		this.hit = false;
-		this.extra = (bonusType == 1) ? new BonusStar(this) : new BonusEyeSet(this);
-		
-		var spacing = radius * 1.25;
-		this.glassball = new Renderable(
-			new Bounds(-spacing, -spacing, 2 * spacing, 2 * spacing),
-			function() {
-				g.drawGlassBall(0, 0, this.radius, "#000".alpha(0.2));
-			}, this);
-	}
-
-	TargetBonus.prototype.step = function() {
-		if (this.extra) {
-			this.extra.step();
-		}
-	};
-
-	TargetBonus.prototype.draw = function() {
-		if (this.hit)
-			return;
-		
-		var color = (this.bonusType == 1) ? "#fc0" : "#0f4";
-
-		var minRadius = 2.6;
-		
-		// Draw crosshairs.
-		if (this.radius < minRadius) {
-			var w = minRadius * 2;
-			setLine(minRadius, color);
-			g.strokeLine(-w, 0, 1.5 * -w, 0);
-			g.strokeLine(w, 0, 1.5 * w, 0);
-			g.strokeLine(0, -w, 0, 1.5 * -w);
-			g.strokeLine(0, w, 0, 1.5 * w);
-		}
-		
-		// Draw star or whatever extra treat.
-		if (this.extra) {
-			this.extra.draw();
-		}
-		
-		// Draw bonus.
-		this.glassball.draw();
-	};
-
-	TargetBonus.prototype.collide = function(shot) {
-		if (!shot.scoring())
-			return;
-	
-		var x0 = shot.dxPrev;
-		var y0 = shot.dyPrev;
-		var x1 = shot.dx;
-		var y1 = shot.dy;
-		var dx = this.dx;
-		var dy = this.dy;
-		var dSqrd = sqrPointSeg(dx, dy, x0, y0, x1, y1);
-
-		var maxRadius = shot.radius + this.radius;
-		if (dSqrd <= maxRadius*maxRadius) {
-			// Slow the game for drama.
-			if (!this.hit) {
-				timeOfAnyHit = tms;
-				this.hit = true;
-				this.extra.pickup();
-				push_multi_sound("bonus");
-				this.extra = null;
-			}
-		}
-	};
-
-	return TargetBonus;
-})();
-
-var BonusStar = (function() {
-	
-	BonusStar.extend(Gob);
-
-	function BonusStar(parent) {
-		this.parent = parent;
-		this.radius = parent.radius;
-		this.ad = 0;
-		this.av = 0.0005;
-	}
-	
-	BonusStar.prototype.step = function() {
-		this.ad += this.av * dms;
-	};
-	
-	BonusStar.prototype.draw = function() {
-		g.fillStyle = "#fc0";
-		g.drawStar(0, 0, this.radius, this.ad);
-	};
-	
-	BonusStar.prototype.pickup = function() {
-		starPower += starPowerTurns;
-	};
-
-	return BonusStar;
-})();
-
-var BonusEyeSet = (function() {
-	
-	BonusEyeSet.extend(Gob);
-
-	function BonusEyeSet(parent) {
-		this.parent = parent;
-		this.radius = parent.radius;
-		this.eyes = new Array();
-		forNum(eyePowerAmount, function() {
-			this.eyes.push(new BonusEye(this));
-		}, this);
-	}
-	
-	BonusEyeSet.prototype.step = function() {
-		this.eyes.forEach(function(v) {
-			v.step();
-		});
-	};
-	
-	BonusEyeSet.prototype.draw = function() {
-		this.eyes.forEach(function(v) {
-			v.draw();
-		});
-	};
-	
-	BonusEyeSet.prototype.pickup = function() {
-		this.eyes.forEach(function(v) {
-			v.pickup();
-		});
-	};
-
-	return BonusEyeSet;
-})();
-
-var BonusEye = (function() {
-	
-	BonusEye.extend(Gob);
-
-	function BonusEye(parent) {
-		this.parent = parent;
-		var radius = parent.radius;
-		this.smallR = radius * 0.075 + 0.5;
-		this.bigR = radius;
-		var rs = this.bigR - this.smallR;
-		do {
-			this.dx = rand() * radius * 2 - radius;
-			this.dy = rand() * radius * 2 - radius;
-		} while (rs * rs <= sqr(this.dx, this.dy));
-		var mag = (1 + rand()) * 0.05 * (radius / 75);
-		var ang = rand() * Math.PI * 2;
-		this.vx = mag * Math.cos(ang);
-		this.vy = mag * Math.sin(ang);
-	}
-	
-	BonusEye.prototype.step = function() {
-		this.dx += this.vx * dms;
-		this.dy += this.vy * dms;
-		var rs = this.bigR - this.smallR;
-		var d = sqr(this.dx, this.dy);
-		if (rs * rs < d) {
-			// Bounce eye.
-			var h = Math.sqrt(d);
-			
-			// Move into circle.
-			this.dx = this.dx * rs / h;
-			this.dy = this.dy * rs / h;
-			
-			
-			// Reflect velocity.
-			var p = project(this.vx, this.vy, this.dx, this.dy);
-			this.vx -= p[0] * 2;
-			this.vy -= p[1] * 2;
-		}
-	};
-	
-	BonusEye.prototype.draw = function() {
-		g.fillStyle = "#000";
-		g.fillCircle(this.dx, this.dy, this.smallR);
-	};
-	
-	BonusEye.prototype.pickup = function() {
-		var x = this.dx + this.parent.parent.dx;
-		var y = this.dy + this.parent.parent.dy;
-		eyeHitMade(x, y);
-	};
-
-	return BonusEye;
-})();
-
-var Ring = (function() {
-	
-	Ring.extend(Gob);
-
-	function Ring() {
+var Ring = Gob.extend({
+	init: function() {
 		this.timeHit = undefined;
-	}
+	},
 	
-	Ring.prototype.draw = function(number, ringWidth) {
+	draw: function(number, ringWidth) {
 		var FADE_TIME = 900;
+		var overlap = 1.5;
+		var outline = ringWidth * 0.13 + 0.5;
 		if (this.timeHit == undefined) {
-			setLine(ringWidth * 0.5, "#000");
+			setLine(ringWidth + overlap - outline * 0.5, targetcolors[Math.floor(number / 2)]);
+			g.strokeCircle(0, 0, ringWidth * number - overlap * 0.5 - outline * 0.25);
+			setLine(outline, "#000");
+			g.strokeCircle(0, 0, ringWidth * (number + 0.5) - outline * 0.5);
 		}
 		else if (tms - this.timeHit < FADE_TIME) {
 			var alpha = 1.0 - ((tms - this.timeHit) / FADE_TIME);
-			setLine(ringWidth * 0.5, "#fff".alpha(alpha));
+			setLine(ringWidth + overlap, "#fff".alpha(alpha));
+			g.strokeCircle(0, 0, ringWidth * number - overlap * 0.5);
 		}
 		else {
 			return; // Ring is destroyed and finished animating.
 		}
-		g.strokeCircle(0, 0, ringWidth * number);
-	}
+	},
 	
-	Ring.prototype.collide = function(shot, number, ringWidth, d) {
+	collide: function(shot, number, ringWidth, d) {
 		if (this.timeHit == undefined) {
-			if (d - shot.radius <= (number + 0.25) * ringWidth) {
+			if (d - shot.radius <= (number + 0.5) * ringWidth) {
 				this.timeHit = tms;
-				timeOfAnyHit = tms;
-				var loot = computeRingGold(number, undefined);
-				goldThisTurn += loot;
-				particles.push(new Bonus(shot.dx, shot.dy, loot, false));
 				return true;
 			}
 		}
 		return false;
 	}
-
-	function computeRingGold(i, nRings) {
-		return i?~-i?15:30:60;//:)
-	}
-
-	return Ring;
-})();
+});
 
 function boundsCheck(gob, radius) {
 	return {
@@ -1421,11 +1335,291 @@ function isFallenFromVision(gob, safetyMargin) {
 	return outby.dx != 0 || 0 < outby.dy;
 }
 
-var Explosion = (function() {
-	
-	Explosion.extend(Gob);
+var Powerup = Gob.extend({
+	init: function(dxi, dyi, radius, power) {
+		this.dx = dxi;
+		this.dy = dyi;
+		this.radius = radius;
+		if (shots == 0) {
+			power = xAlwaysShowPowerup;
+		}
+		this.power = power;
+		this.hit = false;
+		this.extra = 
+			  power == 1 ? new PowerupStar(this)
+			: power == 2 ? new PowerupEyeSet(this)
+			: power == 3 ? new PowerupBigSet(this)
+			: null;
+		
+		var spacing = radius * 1.25;
+		this.glassball = new Renderable(
+			new Bounds(-spacing, -spacing, 2 * spacing, 2 * spacing),
+			function() {
+				g.drawGlassBall(0, 0, this.radius, "#000".alpha(0.2));
+			}, this);
+	},
 
-	function Explosion(dx, dy, streamers) {
+	step: function() {
+		if (this.extra) {
+			this.extra.step();
+		}
+	},
+
+	draw: function() {
+		if (this.hit)
+			return;
+	
+		var pop = (tms - this.targetBuddy.popTime) / targetPopTime;
+		
+		if (pop <= 0)
+			return;
+		
+		if (pop < 1) {
+			pop = 1 - (1 - pop) * (1 - pop);
+			g.scale(pop, pop);
+		}
+		
+		var color = (this.power == 1) ? "#fc0" : "#0f4";
+
+		var minRadius = 2.6;
+		
+		// Draw crosshairs.
+		if (this.radius < minRadius) {
+			var w = minRadius * 2;
+			setLine(minRadius, color);
+			g.strokeLine(-w, 0, 1.5 * -w, 0);
+			g.strokeLine(w, 0, 1.5 * w, 0);
+			g.strokeLine(0, -w, 0, 1.5 * -w);
+			g.strokeLine(0, w, 0, 1.5 * w);
+		}
+		
+		// Draw power up goodie.
+		if (this.extra) {
+			this.extra.draw(0, 0);
+		}
+		
+		this.glassball.draw(0, 0);
+	},
+
+	collide: function(shot) {
+		if (!shot.scoring())
+			return;
+	
+		var x0 = shot.dxPrev;
+		var y0 = shot.dyPrev;
+		var x1 = shot.dx;
+		var y1 = shot.dy;
+		var dx = this.dx;
+		var dy = this.dy;
+		var dSqrd = sqrPointSeg(dx, dy, x0, y0, x1, y1);
+
+		var maxRadius = shot.radius + this.radius;
+		if (dSqrd <= maxRadius*maxRadius) {
+			// Slow the game for drama.
+			if (!this.hit) {
+				timeOfAnyHit = tms;
+				this.hit = true;
+				this.extra.pickup();
+				Sound.push("powerup");
+				this.extra = null;
+			}
+		}
+	}
+});
+
+var PowerupStar = Gob.extend({
+	init: function(parent) {
+		this.parent = parent;
+		this.radius = parent.radius;
+		this.ad = 0;
+		this.av = 0.0005;
+	},
+	
+	step: function() {
+		this.ad += this.av * dms;
+	},
+	
+	draw: function() {
+		g.fillStyle = "#fc0";
+		g.drawStar(0, 0, this.radius, this.ad);
+	},
+	
+	pickup: function() {
+		starPower += starPowerLevels;
+	}
+});
+
+var PowerupEyeSet = Gob.extend({
+	init: function(parent) {
+		this.parent = parent;
+		this.radius = parent.radius;
+		this.eyes = [];
+		forNum(eyePowerNumEyes, function() {
+			this.eyes.push(new PowerupEye(this));
+		}, this);
+	},
+	
+	step: function() {
+		this.eyes.forEach(function(v) {
+			v.step();
+		});
+	},
+	
+	draw: function() {
+		this.eyes.forEach(function(v) {
+			v.draw();
+		});
+	},
+	
+	pickup: function() {
+		this.eyes.forEach(function(v) {
+			v.pickup();
+		});
+	}
+});
+
+var PowerupEye = Gob.extend({
+	init: function(parent) {
+		// new Target(p[0], p[1], s.nRings, s.ringWidth)
+		this.parent = parent;
+		var s = targetSize();
+		this.smallR = s.ringWidth / 2;
+		var radius = parent.radius;
+		this.bigR = radius;
+		var rs = this.bigR - this.smallR;
+		var mag = radius * Math.sqrt(rand());
+		var ang = rand() * Math.PI * 2;
+		var p = cart(ang, mag);
+		this.dx = p[0];
+		this.dy = p[1];
+		mag = (2 + rand()) * 0.05 * (radius / 75);
+		ang = rand() * Math.PI * 2;
+		p = cart(ang, mag);
+		this.vx = p[0];
+		this.vy = p[1];
+		this.ring = new Ring();
+	},
+	
+	step: function() {
+		this.dx += this.vx * dms;
+		this.dy += this.vy * dms;
+		var rs = this.bigR - this.smallR;
+		var d = sqr(this.dx, this.dy);
+		if (rs * rs < d) {
+			// Bounce eye.
+			var h = Math.sqrt(d);
+			
+			// Move into circle.
+			this.dx = this.dx * rs / h;
+			this.dy = this.dy * rs / h;
+			
+			// Reflect velocity.
+			var p = project(this.vx, this.vy, this.dx, this.dy);
+			this.vx -= p[0] * 2;
+			this.vy -= p[1] * 2;
+		}
+	},
+	
+	draw: function() {
+		g.save();
+		g.translate(this.dx, this.dy);
+		this.ring.draw(0, this.smallR);
+		g.restore();
+	},
+	
+	pickup: function() {
+		var x = this.dx + this.parent.parent.dx;
+		var y = this.dy + this.parent.parent.dy;
+		if (xEyeSetScoreImmediate) {
+			this.ring.timeHit = tms;
+			eyeHitMade(x, y);
+		}
+	}
+});
+
+var PowerupBigSet = Gob.extend({
+	init: function(parent) {
+		this.parent = parent;
+		this.radius = parent.radius;
+		this.shots = [];
+		forNum(bigPowerNumShots, function() {
+			this.shots.push(new PowerupBig(this));
+		}, this);
+	},
+	
+	step: function() {
+		this.shots.forEach(function(v) {
+			v.step();
+		});
+	},
+	
+	draw: function() {
+		this.shots.forEach(function(v) {
+			v.draw();
+		});
+	},
+	
+	pickup: function() {
+		this.shots.forEach(function(v) {
+			v.pickup();
+		});
+	}
+});
+
+var PowerupBig = Gob.extend({
+	init: function(parent) {
+		this.parent = parent;
+		this.smallR = bigShotRadius;
+		var radius = parent.radius;
+		this.bigR = radius;
+		var rs = this.bigR - this.smallR;
+		var mag = radius * Math.sqrt(rand());
+		var ang = rand() * Math.PI * 2;
+		var p = cart(ang, mag);
+		this.dx = p[0];
+		this.dy = p[1];
+		mag = (1 + rand()) * 0.05 * (radius / 75);
+		ang = rand() * Math.PI * 2;
+		p = cart(ang, mag);
+		this.vx = p[0];
+		this.vy = p[1];
+		this.shot = new Shot(0, 0, 0, 0, 1);
+	},
+	
+	step: function() {
+		this.dx += this.vx * dms;
+		this.dy += this.vy * dms;
+		var rs = this.bigR - this.smallR;
+		var d = sqr(this.dx, this.dy);
+		if (rs * rs < d) {
+			// Bounce eye.
+			var h = Math.sqrt(d);
+			
+			// Move into circle.
+			this.dx = this.dx * rs / h;
+			this.dy = this.dy * rs / h;
+			
+			// Reflect velocity.
+			var p = project(this.vx, this.vy, this.dx, this.dy);
+			this.vx -= p[0] * 2;
+			this.vy -= p[1] * 2;
+		}
+	},
+	
+	draw: function() {
+		g.save();
+		g.translate(this.dx, this.dy);
+		this.shot.draw();
+		g.restore();
+	},
+	
+	pickup: function() {
+		numBigShots++;
+	}
+});
+
+var Explosion = Gob.extend({
+	init: function(dx, dy, streamers) {
 		this.dx = dx;
 		this.dy = dy;
 		this.timeStart = tms;
@@ -1434,14 +1628,9 @@ var Explosion = (function() {
 			particles.push(new Streamer(dx, dy, angle));
 			angle += Math.PI * 2 / streamers;
 		});
-		if (xScoreNewStyle) {
-			forNum(streamers, function(i) {
-				createPermBonus();
-			});
-		}
-	}
+	},
 	
-	Explosion.prototype.draw = function() {
+	draw: function() {
 		var age = tms - this.timeStart;
 
 		// Draw ring of smoke.
@@ -1466,42 +1655,37 @@ var Explosion = (function() {
 			g.strokeCircle(0, 0, ringRadius);
 		}
 	}
+});
 
-	return Explosion;
-})();
+var streamerWidth = 6;
+var streamerLength = Math.floor(275 / targetMspfPhysics);
 
-var Streamer = (function() {
-	
-	Streamer.extend(Gob);
-	
-	var streamerWidth = 6;
-	var streamerLength = Math.floor(275 / targetMspfPhysics);
-	
-	function Streamer(dx, dy, angle) {
+var Streamer = Gob.extend({
+	init: function(dx, dy, angle) {
 		this.dx = dx;
 		this.dy = dy;
 		var mag = (1 + rand()) * 0.12 * physics;
-		var ang = angle;
-		this.vx = mag * Math.cos(ang);
-		this.vy = mag * Math.sin(ang);
+		var p = cart(angle, mag);
+		this.vx = p[0];
+		this.vy = p[1];
 		this.ang1da = rand() * Math.PI * 2;
 		this.ang1va = (rand() - 0.5) * Math.PI * 0.034 * physics;
 		this.ang1r = rand() * 0.4 * physics;
 		this.color = hue(rand());
-		this.points = new Array();
+		this.points = [];
 		this.points.push([this.dx, this.dy]);
 		this.dead = false;
 		this.msSparks = 0;
 		
-		this.segmentColors = new Array(streamerLength);
+		this.segmentColors = [];
 		var cTail = "#fff";
 		forNum(streamerLength, function(i) {
 			var alpha = i / streamerLength;
 			this.segmentColors[i] = this.color.shiftColor(cTail, 1 - alpha).alpha(alpha);
 		}, this);
-	}
+	},
 	
-	Streamer.prototype.step = function() {
+	step: function() {
 		if (this.dead)
 			return;
 		
@@ -1510,8 +1694,9 @@ var Streamer = (function() {
 		this.dy += (this.vy + gravity * dms * 0.5) * dms;
 		this.vy += gravity * dms;
 		this.ang1da += this.ang1va * dms;
-		this.dx += this.ang1r * Math.cos(this.ang1da) * dms;
-		this.dy += this.ang1r * Math.sin(this.ang1da) * dms;
+		var p = cart(this.ang1da, dms * this.ang1r);
+		this.dx += p[0];
+		this.dy += p[1];
 		if (streamerLength <= this.points.length)
 			this.points.shift();
 		this.points.push([this.dx, this.dy]);
@@ -1525,9 +1710,9 @@ var Streamer = (function() {
 			particles.push(new Spark(this.dx, this.dy, this.color));
 		}
 		this.msSparks += dms;
-	}
+	},
 	
-	Streamer.prototype.draw = function() {
+	draw: function() {
 		if (this.dead)
 			return;
 		
@@ -1546,37 +1731,32 @@ var Streamer = (function() {
 		}
 		g.restore();
 	}
-	
-	return Streamer;
-})();
+});
 
-var Spark = (function() {
-	
-	Spark.extend(Gob);
+var sparkRadius = 1.5;
+var sparkLifetime = 1500;
 
-	var sparkRadius = 1.5;
-	
-	var sparkLifetime = 1500;
-	
-	function Spark(x, y, color) {
+var Spark = Gob.extend({
+	init: function(x, y, color) {
 		this.dx = x;
 		this.dy = y;
 		var mag = (1 + rand()) * 0.045 * physics;
 		var ang = rand() * Math.PI * 2;
-		this.vx = mag * Math.cos(ang);
-		this.vy = mag * Math.sin(ang);
+		var p = cart(ang, mag);
+		this.vx = p[0];
+		this.vy = p[1];
 		this.timeCreated = tms;
 		this.color = color;
 		this.dead = false;
-	}
+	},
 	
-	Spark.prototype.step = function() {
+	step: function() {
 		this.dx += this.vx * dms;
 		this.dy += (this.vy + gravity * dms * 0.5) * dms;
 		this.vy += gravity * dms;
-	}
+	},
 	
-	Spark.prototype.draw = function() {
+	draw: function() {
 		var alpha = 1 - ((tms - this.timeCreated) / sparkLifetime);
 		if (0.1 < alpha) {
 			g.fillStyle = this.color;
@@ -1587,61 +1767,54 @@ var Spark = (function() {
 			this.dead = true;
 		}
 	}
-	
-	return Spark;
-})();
+});
 
-var Bonus = (function() {
-	
-	Bonus.extend(Gob);
-
-	function Bonus(dxi, dyi, amount, isSpecial) {
+var CashBubble = Gob.extend({
+	init: function(dxi, dyi, amount, special) {
 		this.dx = dxi;
 		this.dy = dyi;
-		this.timeBonusGiven = tms;
+		this.timeCashGiven = tms;
 		this.amount = amount;
-		this.isSpecial = isSpecial;
+		this.special = special;
 		
-		var bounds = isSpecial
+		var bounds = (this.special)
 			? new Bounds(-40, -20, 80, 25)
 			: new Bounds(-17, -12, 34, 13);
 		this.textimage = new Renderable(
 			bounds,
 			function() {
-				if (this.isSpecial) {
-					setFont(18, "#0c0", "center");
-					setLine(6, "#000", "round");
-					g.strokeAndFillText("+" + this.amount, 0, 0);
+				if (this.special) {
+					var color = this.amount > 0 ? "#0d0" : "#d00";
+					setFont(18, color, "center");
+					setLine(5, "#000", "round");
+					g.strokeAndFillText(withSign(this.amount), 0, 0);
 				}
 				else {
 					setFont(12, "#000", "center");
-					g.fillText("+" + this.amount, 0, 0);
+					setLine(5, "#000", "round");
+					g.fillText(withSign(this.amount), 0, 0);
 				}
 			}, this);
-	}
+	},
 
-	Bonus.prototype.draw = function() {
-		var dt = tms - this.timeBonusGiven;
+	draw: function() {
+		var dt = tms - this.timeCashGiven;
 		var totalTime = 5000.0;
 		var fadeTime = 2000.0;
 		var opaqueTime = totalTime - fadeTime;
-		if (dt < totalTime) {
+		if (dt < totalTime || !xFadeOutCashBubbles) {
 			var alpha = Math.min(1.0, 1.0 - (dt - opaqueTime) / fadeTime);
 			var oy = Math.min(1.0, dt / 500.0);
-			g.globalAlpha = alpha;
-			g.translate(0, -12 - oy * 22);
-			this.textimage.draw();
+			if (xFadeOutCashBubbles)
+				g.globalAlpha = alpha;
+			this.textimage.key = this.amount;
+			this.textimage.draw(0, -sign(this.amount) * (12 + oy * 22));
 		}
-	};
+	}
+});
 
-	return Bonus;
-})();
-
-var Sink = (function() {
-	
-	Sink.extend(Gob);
-
-	function Sink(dxi, dyi) {
+var Sink = Gob.extend({
+	init: function(dxi, dyi) {
 		this.dx = dxi;
 		this.dy = dyi;
 		this.color = "#000";
@@ -1660,18 +1833,18 @@ var Sink = (function() {
 			}, this);
 			dms = backupDms;
 		}
-	}
+	},
 
-	Sink.prototype.step = function() {
+	step: function() {
 		// Step sparks.
 		while (0 < this.msSparks) {
 			this.msSparks -= 25;
 			particles.push(new SinkSpark(this.dx, this.dy, this.color));
 		}
 		this.msSparks += dms;
-	};
+	},
 
-	Sink.prototype.draw = function() {
+	draw: function() {
 		var c = "#000";
 		var grad = g.createRadialGradient(0, 0, 0, 0, 0, 160);
 		grad.addColorStop(0.0, c.alpha(0.4));
@@ -1684,9 +1857,9 @@ var Sink = (function() {
 		g.fillCircle(0, 0, 160);
 		g.fillStyle = c.alpha(0.5);
 		g.fillCircle(0, 0, 1);
-	};
+	},
 
-	Sink.prototype.collide = function(shot) {
+	collide: function(shot) {
 		// Check for outright collision.
 		var x0 = shot.dxPrev;
 		var y0 = shot.dyPrev;
@@ -1719,31 +1892,27 @@ var Sink = (function() {
 			shot.vx += fx;
 			shot.vy += fy;
 		}
-	};
+	}
+});
 
-	return Sink;
-})();
-
-var SinkSpark = (function() {
-	
-	SinkSpark.extend(Gob);
-	
-	function SinkSpark(x, y, color) {
+var SinkSpark = Gob.extend({
+	init: function(x, y, color) {
 		this.isRing = rand() < 0.02;
 		this.dx = x;
 		this.dy = y;
 		var mag = (1.0 + rand()) * 85;
 		var ang = rand() * Math.PI * 2;
-		this.ox = mag * Math.cos(ang);
-		this.oy = mag * Math.sin(ang);
+		var p = cart(ang, mag);
+		this.ox = p[0];
+		this.oy = p[1];
 		this.timeCreated = tms;
 		this.color = color;
 		this.dead = false;
 		this.oxPrev = this.ox;
 		this.oyPrev = this.oy;
-	}
+	},
 	
-	SinkSpark.prototype.step = function() {
+	step: function() {
 		if (this.dead)
 			return;
 		var d = mag(this.ox, this.oy);
@@ -1757,13 +1926,13 @@ var SinkSpark = (function() {
 		this.oyPrev = this.oy;
 		this.ox += -this.ox * f;
 		this.oy += -this.oy * f;
-		if (Math.sign(this.oxPrev) != Math.sign(this.ox))
+		if (sign(this.oxPrev) != sign(this.ox))
 			this.ox = 0;
-		if (Math.sign(this.oyPrev) != Math.sign(this.oy))
+		if (sign(this.oyPrev) != sign(this.oy))
 			this.oy = 0;
-	}
+	},
 	
-	SinkSpark.prototype.draw = function() {
+	draw: function() {
 		if (this.dead)
 			return;
 		var alpha = ((tms - this.timeCreated) / 2000);
@@ -1782,23 +1951,18 @@ var SinkSpark = (function() {
 			}
 		}
 	}
-	
-	return SinkSpark;
-})();
+});
 
-var Trajectory = (function() {
-	
-	Trajectory.extend(Gob);
-	
-	var ticksPerDash = Math.floor(55 / targetMspfPhysics);
+var ticksPerDash = Math.floor(55 / targetMspfPhysics);
 
-	function Trajectory() {
+var Trajectory = Gob.extend({
+	init: function() {
 		// To get it translated correctly as all gobs are before draw() is called.
 		this.dx = 0;
 		this.dy = 0;
-	}
+	},
 
-	Trajectory.prototype.draw = function() {
+	draw: function() {
 		if (!starPower)
 			return;
 		
@@ -1861,85 +2025,37 @@ var Trajectory = (function() {
 		// To get it translated correctly as all gobs are before draw() is called:
 		this.dx = 0;
 		this.dy = 0;
-	};
+	},
 	
-	Trajectory.prototype.scoring = function() {
+	scoring: function() {
 		return false;
 	}
+});
 
-	return Trajectory;
-})();
-
-var PermBonus = (function() {
-	
-	PermBonus.extend(Gob);
-
-	function PermBonus(dxi, dyi) {
-		this.dx = dxi;
-		this.dy = dyi;
-		this.radius = 10;
-		this.dead = false;
-	}
-
-	PermBonus.prototype.draw = function() {
-		if (this.dead)
-			return;
-		
-		g.drawGlassBall(0, 0, this.radius, "#fc0");
-	};
-
-	PermBonus.prototype.collide = function(shot) {
-		if (!shot.scoring())
-			return;
-	
-		var x0 = shot.dxPrev;
-		var y0 = shot.dyPrev;
-		var x1 = shot.dx;
-		var y1 = shot.dy;
-		var dx = this.dx;
-		var dy = this.dy;
-		var dSqrd = sqrPointSeg(dx, dy, x0, y0, x1, y1);
-
-		var maxRadius = shot.radius + this.radius;
-		if (dSqrd <= maxRadius*maxRadius) {
-			// Slow the game for drama.
-			if (!this.dead) {
-				timeOfAnyHit = tms;
-				this.dead = true;
-				push_multi_sound("bonus");
-				var eyePermBonus = 10;
-				goldThisTurn += eyePermBonus;
-				particles.push(new Bonus(this.dx, this.dy - 29, eyePermBonus, true));
-			}
-		}
-	};
-
-	return PermBonus;
-})();
-
-var Egg = (function() {
-
-	function Egg(dxi, dyi, radius, color, mass) {
+var Egg = Gob.extend({
+	init: function(dxi, dyi, gob) {
 		this.dx = dxi;
 		this.dy = dyi;
 		this.vx = 0;
 		this.vy = 0;
 		this.angle = 5;
 		this.vangle = 0;
-		this.radius = radius;
-		this.color = color;
-		this.ellipseA = radius * 1.0;
-		this.ellipseB = radius * 1.4;
-		this.spinability = 0.04;
-		this.linearFriction = 0.02 * physics * physics;
-		this.angularFriction = 0.002 * physics * physics;
+		this.gob = gob;
+		this.ellipseA = this.gob.radius * 1.0;
+		this.ellipseB = this.gob.radius * 1.4;
+		this.spinability = 0.06;
+		this.linearFriction = 0.015 * physics * physics;
+		this.angularFriction = 0.001 * physics * physics;
 		this.hit = 0;
-		this.mass = 0.5;
+		this.mass = 0;
 		this.bounce = 10;
-	}
+	},
 
-	Egg.prototype.step = function() {
+	step: function() {
+		this.moving = false;
+		
 		if (this.vx != 0 && this.vy != 0) {
+			this.moving = true;
 			var vxPrev = this.vx;
 			var vyPrev = this.vy;
 			var sSqrd = this.vx * this.vx + this.vy * this.vy;
@@ -1955,34 +2071,35 @@ var Egg = (function() {
 			}
 			this.dx += (this.vx + vxPrev) * 0.5;
 			this.dy += (this.vy + vyPrev) * 0.5;
+			
+			// Collide with screen bounds.
+			var outby = boundsCheck(this, -this.gob.radius);
+			if (outby.dx != 0) {
+				this.vx = -this.vx;
+				this.dx -= outby.dx;
+			}
+			if (outby.dy != 0) {
+				this.vy = -this.vy;
+				this.dy -= outby.dy;
+			}
 		}
 		
 		if (this.vangle != 0) {
+			this.moving = true;
 			var vaPrev = this.vangle;
 			var afriction = this.angularFriction;
 			if (Math.abs(this.vangle) > afriction) {
-				this.vangle -= Math.sign(this.vangle) * afriction;
+				this.vangle -= sign(this.vangle) * afriction;
 			}
 			else {
 				this.vangle = 0;
 			}
 			this.angle += (this.vangle + vaPrev) * 0.5;
 		}
-		
-		// Collide with screen bounds.
-		var outby = boundsCheck(this, -this.radius);
-		if (outby.dx != 0) {
-			this.vx = -this.vx;
-			this.dx -= outby.dx;
-		}
-		if (outby.dy != 0) {
-			this.vy = -this.vy;
-			this.dy -= outby.dy;
-		}
-	};
+	},
 
-	Egg.prototype.draw = function() {
-		g.drawEgg(0, 0, this.ellipseA, this.ellipseB, this.color, this.angle);
+	draw: function() {
+		g.drawEgg(0, 0, this.ellipseA, this.ellipseB, this.gob.color, this.angle);
 		g.save();
 		g.rotate(this.angle);
 		if (this.drawseg != undefined) {
@@ -1991,10 +2108,15 @@ var Egg = (function() {
 			g.strokeLine(seg[0][0], seg[0][1], seg[1][0] - seg[0][0], seg[1][1] - seg[0][1]);
 		}
 		g.restore();
-	};
+	},
 
-	Egg.prototype.collide = function(shot) {
+	collide: function(shot) {
 		if (!(shot instanceof Shot))
+			return;
+		
+		if (shot.egglog == undefined)
+			shot.egglog = [];
+		if (shot.egglog[shots])
 			return;
 		
 		var x0 = shot.dx;
@@ -2023,16 +2145,24 @@ var Egg = (function() {
 		if (dsqrd > sr * sr && !isPointInside) {
 			return;
 		}
-		//this.hit++;
+		else {
+			// Record hit.
+			if (!shot.egglog[shots])
+				this.hit++;
+			else
+				return;
+			shot.egglog[shots] = true;
+			Sound.push(this.gob.sound);
+		}
 		
 		// Compute normal.
 		var ex = seg[0][0];
 		var ey = seg[0][1];
-		var sign = Math.sign(seg[1][1]);
-		var m = -sign * eb / (ea * ea) * ex / Math.sqrt(1 - ex * ex / (ea * ea));
+		var sig = sign(seg[1][1]);
+		var m = -sig * eb / (ea * ea) * ex / Math.sqrt(1 - ex * ex / (ea * ea));
 		var p = normal(-m, 1);
-		var nx = sign * p[0];
-		var ny = sign * p[1];
+		var nx = sig * p[0];
+		var ny = sig * p[1];
 		
 		// Move shot to no longer overlap.
 		// Push back by seg mag minus shot radius.
@@ -2080,129 +2210,177 @@ var Egg = (function() {
 		var vi1 = intersectLines(ex, ey, ex + nx, ey + ny, 0, 0, 0, 1);
 		var amountAngular = Math.abs(vi1[1]) / eb;
 		var amountLinear = 1 - amountAngular;
-		this.vangle += Math.sign(ex) * Math.sign(ey) * mag(dvex, dvey) * amountAngular * this.spinability * this.bounce;
+		this.vangle += sign(ex) * sign(ey) * mag(dvex, dvey) * amountAngular * this.spinability * this.bounce;
 		
 		// Apply remaining force to linear momentum.
 		ps = [[dvex * amountLinear, dvey * amountLinear]];
 		rotate(ps, this.angle);
 		this.vx += ps[0][0] * this.bounce;
 		this.vy += ps[0][1] * this.bounce;
-	};
-
-	return Egg;
-})();
-
-var BossEgg = (function() {
-	
-	BossEgg.extend(Gob);
-
-	function BossEgg(dxi, dyi) {
-		this.radius = 50;
-		this.hit = false;
-		this.egg = new Egg(dxi, dyi, this.radius, "#000");
-		this.eggsync();
-		this.dead = false;
 	}
+});
+
+var GiftEgg = Egg.extend({
+	init: function(dxi, dyi) {
+		this.radius = 22.5;
+		this.color = "#03c";
+		this.sound = "hitgiftegg";
+		this.hit = false;
+		this.egg = new Egg(dxi, dyi, this);
+		this.dead = false;
+		this.eggsync();
+	},
 	
-	BossEgg.prototype.eggsync = function() {
+	eggsync: function() {
 		this.dx = this.egg.dx;
 		this.dy = this.egg.dy;
 		this.vx = this.egg.vx;
 		this.vy = this.egg.vy;
-	}
+		this.shotNotEnded = this.egg.moving;
+	},
 
-	BossEgg.prototype.draw = function() {
+	draw: function() {
+		if (this.egg.hit == 1)
+			return;
+		
+		this.egg.draw();
+	},
+
+	step: function() {
+		if (this.egg.hit == 1)
+			return;
+		
+		this.egg.step();
+		this.eggsync();
+	},
+
+	collide: function(shot) {
+		if (this.egg.hit == 1)
+			return;
+		
+		this.egg.collide(shot);
+		this.eggsync();
+		
+		if (this.egg.hit == 1) {
+			changeCash(this.dy, this.dy, giftEggBonus, true);
+		}
+	}
+});
+
+var ElectricEgg = Egg.extend({
+	init: function(dxi, dyi) {
+		this.radius = 45;
+		this.color = "#000";
+		this.sound = "hitelectricegg";
+		this.hit = false;
+		this.egg = new Egg(dxi, dyi, this);
+		this.eggsync();
+		this.dead = false;
+		this.wasMoving = false;
+	},
+	
+	eggsync: function() {
+		this.dx = this.egg.dx;
+		this.dy = this.egg.dy;
+		this.vx = this.egg.vx;
+		this.vy = this.egg.vy;
+		var isMoving = this.egg.vx || this.egg.vy || this.egg.vangle;
+		if (this.wasMoving && !isMoving) {
+			// Release electric shock.
+			
+		}
+		this.wasMoving = isMoving;
+	},
+
+	draw: function() {
 		if (this.egg.hit == 3)
 			return;
 		
 		this.egg.draw();
-	};
+	},
 
-	BossEgg.prototype.step = function() {
+	step: function() {
 		if (this.egg.hit == 3)
 			return;
 		
 		this.egg.step();
 		this.eggsync();
-	};
+	},
 
-	BossEgg.prototype.collide = function(shot) {
+	collide: function(shot) {
 		if (this.egg.hit == 3)
 			return;
 		
 		this.egg.collide(shot);
 		this.eggsync();
-	};
-
-	return BossEgg;
-})();
-
-function declarePracticeShot() {
-	layers.push(new LayerPracticeMessage(1));
-}
-
-function declareNonPracticeShot() {
-	layers.push(new LayerPracticeMessage(0));
-}
-
-var LayerPracticeMessage = (function() {
-	
-	LayerPracticeMessage.extend(Layer);
-
-	function LayerPracticeMessage(isPracticeShot) {
-		this.timeCreated = time();
-		if (isPracticeShot) {
-			this.message1 = "First Fire A";
-			this.message2 = "Practice Shot!";
-		}
-		else {
-			this.message1 = "Now Fire A";
-			this.message2 = "Real Shot!";
-		}
 		
-		var w = 200;
-		var h = 250;
-		this.dx = (gameCanvasW - w) / 2;
-		this.dy = (gameCanvasH - h) / 2;
-		
-		this.image = new Renderable(
-			new Bounds(-6, -6, w + 12, h + 12),
-			function() {
-				g.drawDialog(0, 0, w, h, "#000");
-				
-				setFont(24, "#0a0", "center");
-				g.fillText(this.message1, w / 2, 38);
-				g.fillText(this.message2, w / 2, 76);
-			}, this);
+		if (this.egg.hit == 3) {
+			changeCash(this.dy, this.dy, giftEggBonus, true);
+		}
 	}
+});
 
-	LayerPracticeMessage.prototype.step = function() {
-		if (2000 <= time() - this.timeCreated)
-			finishPracticeShot(this);
-	};
+var MainEgg = Egg.extend({
+	init: function(dxi, dyi) {
+		this.radius = 67.5;
+		this.color = "#f40";
+		this.sound = "hitmainegg";
+		this.hit = false;
+		this.egg = new Egg(dxi, dyi, this);
+		this.eggsync();
+		this.dead = false;
+	},
+	
+	eggsync: function() {
+		this.dx = this.egg.dx;
+		this.dy = this.egg.dy;
+		this.vx = this.egg.vx;
+		this.vy = this.egg.vy;
+	},
 
-	LayerPracticeMessage.prototype.draw = function() {
-		this.image.draw();
-	};
+	draw: function() {
+		if (this.egg.hit == 3)
+			return;
+		
+		this.egg.draw();
+	},
 
-	return LayerPracticeMessage;
-})();
+	step: function() {
+		if (this.egg.hit == 3)
+			return;
+		
+		this.egg.step();
+		this.eggsync();
+	},
 
-function finishPracticeShot(layer) {
-	layers.remove(layer);
+	collide: function(shot) {
+		if (this.egg.hit == 3)
+			return;
+		
+		this.egg.collide(shot);
+		this.eggsync();
+		
+		if (this.egg.hit == 3) {
+			changeCash(this.dx, this.dy, giftEggBonus, true);
+		}
+	}
+});
+
+function withSign(n) {
+	return (0 < n ? "+" : "") + n
 }
 
-var LayerScore = (function() {
-	
-	LayerScore.extend(Layer);
+function numDigits(n) {
+	return n == 0 ? 1 : 1 + Math.floor(Math.log(Math.abs(n)) / Math.LN10);
+}
 
-	function LayerScore() {
+var LayerLevelSummary = Layer.extend({
+	init: function() {
 		this.shot = -shotCost;
 		this.fuel = -fuelCost;
-		this.gold = goldThisTurn;
-		this.net  = this.shot + this.fuel + this.gold;
+		this.cash = cashWonThisLevel;
+		this.net  = cashChangeThisLevel;
 		this.timeCreated = time();
-		isCannonFocused = false;
 		
 		var w = 200;
 		var h = 250;
@@ -2221,13 +2399,13 @@ var LayerScore = (function() {
 				ox = 35; oy = 45;
 				g.fillText("shot", ox, oy); oy += lh;
 				g.fillText("fuel", ox, oy); oy += lh;
-				if (this.gold != 0)
-					g.fillText("gold", ox, oy); oy += lh;
+				if (this.cash != 0)
+					g.fillText("$", ox, oy); oy += lh;
 				ox += w / 2 - 25; oy -= 3 * lh;
 				g.fillText(withSign(this.shot), ox, oy); oy += lh;
 				g.fillText(withSign(this.fuel), ox, oy); oy += lh;
-				if (this.gold != 0)
-					g.fillText(withSign(this.gold), ox, oy); oy += lh;
+				if (this.cash != 0)
+					g.fillText(withSign(this.cash), ox, oy); oy += lh;
 				
 				// Bar.
 				setLine(4.0, "#000", "round");
@@ -2244,59 +2422,37 @@ var LayerScore = (function() {
 				g.fillStyle = "#fff".shiftColor(color, amount);
 				g.strokeAndFillText(withSign(value),  ox, oy);
 			}, this);
-	}
+	},
 
-	function withSign(n) {
-		return (0 < n ? "+" : "") + n
-	}
+	draw: function() {
+		var alpha = (time() - this.timeCreated) / dialogFadeTime;
+		if (alpha < 1) {
+			g.globalAlpha = alpha;
+		}
+		this.image.draw(0, 0);
+	},
 
-	LayerScore.prototype.draw = function() {
-		this.image.draw();
-	};
-
-	LayerScore.prototype.onKeyPress = function(k) {
+	onKeyPress: function(k) {
 		if (!xNoScreenDelays && time() - this.timeCreated < 200)
 			return false;
 		switch(k) {
-		case KeyEvent.DOM_VK_SPACE: finishScore(this); return true;
+		case KeyEvent.DOM_VK_SPACE: finishLevelSummary(this); return true;
 		}
 		return false;
-	};
+	},
 
-	LayerScore.prototype.onKeyRelease = function(k) {
+	onKeyRelease: function(k) {
 		return false;
-	};
+	}
+});
 
-	return LayerScore;
-})();
-
-function finishScore(layer) {
+function finishLevelSummary(layer) {
 	layers.remove(layer);
-	
-	changeGold(layer.net);
-	
-	totalFuelUsed += layer.fuel;
-	totalGoldWon += layer.gold;
-	
-	if (!hitsMade)
-		hitRun = 0;
-	
-	if (!eyesMade)
-		eyeRun = 0;
-	
-	if (0 < gold || xInvincible) {
-		nextShot();
-	}
-	else {
-		gameOver();
-	}
+	finishLevel();
 }
 
-var LayerRetryShot = (function() {
-	
-	LayerRetryShot.extend(Layer);
-
-	function LayerRetryShot() {
+var LayerRetryLevel = Layer.extend({
+	init: function() {
 		this.timeCreated = time();
 		isCannonFocused = false;
 		
@@ -2328,45 +2484,108 @@ var LayerRetryShot = (function() {
 					g.fillText("or aim higher", ox, oy); oy += lh;
 				}
 			}, this);
-	}
+	},
 
-	LayerRetryShot.prototype.draw = function() {
-		this.image.draw();
-	};
+	draw: function() {
+		var alpha = (time() - this.timeCreated) / dialogFadeTime;
+		if (alpha < 1) {
+			g.globalAlpha = alpha;
+		}
+		this.image.draw(0, 0);
+	},
 
-	LayerRetryShot.prototype.onKeyPress = function(k) {
+	onKeyPress: function(k) {
 		if (!xNoScreenDelays && time() - this.timeCreated < 200)
 			return false;
 		switch(k) {
 		case KeyEvent.DOM_VK_SPACE: finishRetryDialog(this); return true;
 		}
 		return false;
-	};
-
-	return LayerRetryShot;
-})();
+	}
+});
 
 function finishRetryDialog(layer) {
 	layers.remove(layer);
-	
-	retryShot();
+	retryLevel();
+}
+
+var LayerEndTurnLevel = Layer.extend({
+	init: function() {
+		this.timeCreated = time();
+		isCannonFocused = false;
+		
+		var w = 270;
+		var h = 150;
+		this.dx = (gameCanvasW - w) / 2;
+		this.dy = (gameCanvasH - h) / 2;
+		
+		this.image = new Renderable(
+			new Bounds(-6, -6, w + 12, h + 12),
+			function() {
+				g.drawDialog(0, 0, w, h, "#444");
+				
+				// Try again message.
+				setFont(30, "#000", "center");
+				var lh = 34;
+				var ox, oy;
+				ox = 135; oy = 52;
+				if (didOverShoot) {
+					g.fillText("Over shot!", ox, oy); oy += 44;
+					setFont(20, "#000", "center");
+					g.fillText("Use less fuel", ox, oy); oy += lh;
+					g.fillText("or aim lower", ox, oy); oy += lh;
+				}
+				else {
+					g.fillText("Under shot!", ox, oy); oy += 44;
+					setFont(20, "#000", "center");
+					g.fillText("Use more fuel", ox, oy); oy += lh;
+					g.fillText("or aim higher", ox, oy); oy += lh;
+				}
+			}, this);
+	},
+
+	draw: function() {
+		var alpha = (time() - this.timeCreated) / dialogFadeTime;
+		if (alpha < 1) {
+			g.globalAlpha = alpha;
+		}
+		this.image.draw(0, 0);
+	},
+
+	onKeyPress: function(k) {
+		if (!xNoScreenDelays && time() - this.timeCreated < 200)
+			return false;
+		switch(k) {
+		case KeyEvent.DOM_VK_SPACE: finishEndTurnDialog(this); return true;
+		}
+		return false;
+	}
+});
+
+function finishEndTurnDialog(layer) {
+	layers.remove(layer);
 }
 
 function gameOver() {
-	layers.push(new LayerGameOver());
+	layers.push(new LayerGameSummary());
 }
 
-var LayerGameOver = (function() {
-	
-	LayerGameOver.extend(Layer);
-
-	function LayerGameOver() {
+var LayerGameSummary = Layer.extend({
+	init: function() {
 		this.gameTime = time() - timeGameStart;
 		this.timeCreated = time();
 		isCannonFocused = false;
 		
 		// Create score from game.
-		addGameScore();
+		var score = {};
+		score.name = nameFieldValue.replace(/^\s+|\s+$/g,"");;
+		score.timeFinished = time();
+		score.timePlayed = score.timeFinished - timeGameStart;
+		score.eyes = eyesTotal;
+		score.gold = totalCashWon;
+		score.shots = shots;
+		score.progress = progress;
+		addGameScore(score);
 		
 		var w = 200;
 		var h = 250;
@@ -2380,11 +2599,11 @@ var LayerGameOver = (function() {
 				
 				// Stats.
 				setFont(22, "#000", "center");
-				g.fillText("Game Over", w / 2, 37);
+				g.fillText("Game Over!", w / 2, 37);
 				setFont(12, "#000", "center");
 				g.fillText("Time Played: " + msToString(this.gameTime), w / 2, 60);
 				g.fillText("Bullseyes: " + eyesTotal, w / 2, 80);
-				g.fillText("Gold won: " + totalGoldWon, w / 2, 100);
+				g.fillText("$ won: " + totalCashWon, w / 2, 100);
 				
 				// Eyes.
 				setFont(28, "#07f", "center");
@@ -2395,25 +2614,27 @@ var LayerGameOver = (function() {
 				g.strokeAndFillText("Achieved", ox, oy + 30);
 				g.strokeAndFillText(msg, ox, oy + 72);
 			}, this);
-	}
+	},
 
-	LayerGameOver.prototype.draw = function() {
-		this.image.draw();
-	};
+	draw: function() {
+		var alpha = (time() - this.timeCreated) / dialogFadeTime;
+		if (alpha < 1) {
+			g.globalAlpha = alpha;
+		}
+		this.image.draw(0, 0);
+	},
 
-	LayerGameOver.prototype.onKeyPress = function(k) {
+	onKeyPress: function(k) {
 		if (!xNoScreenDelays && time() - this.timeCreated < 200)
 			return false;
 		switch(k) {
-		case KeyEvent.DOM_VK_SPACE: finishGameOver(this); return true;
+		case KeyEvent.DOM_VK_SPACE: finishGameSummary(this); return true;
 		}
 		return false;
-	};
+	}
+});
 
-	return LayerGameOver;
-})();
-
-function finishGameOver(layer) {
+function finishGameSummary(layer) {
 	layers.remove(layer);
 	newGame();
 }
@@ -2423,11 +2644,8 @@ function beginStage() {
 	layers.push(new LayerStageIntro());
 }
 
-var LayerStageIntro = (function() {
-	
-	LayerStageIntro.extend(Layer);
-
-	function LayerStageIntro() {
+var LayerStageIntro = Layer.extend({
+	init: function() {1
 		this.gameTime = time() - timeGameStart;
 		this.timeCreated = time();
 		
@@ -2444,13 +2662,16 @@ var LayerStageIntro = (function() {
 				var x = w / 2;
 				var y = h / 2;
 				
-				var r = 150;
-				var grad;
-				grad = g.createRadialGradient(x, y, 0, x, y, r);
-				grad.addColorStop(0.0, "#aaa");
-				grad.addColorStop(1.0, "#fff");
-				g.fillStyle = grad;
-				g.fillCircle(x, y, r);
+				// Gray background glow.
+				if (false) {
+					var r = 150;
+					var grad;
+					grad = g.createRadialGradient(x, y, 0, x, y, r);
+					grad.addColorStop(0.0, "#aaa");
+					grad.addColorStop(1.0, "#fff");
+					g.fillStyle = grad;
+					g.fillCircle(x, y, r);
+				}
 				
 				setFont(160, "#000", "center");
 				g.fillText(stage, x, y + 70);
@@ -2458,36 +2679,38 @@ var LayerStageIntro = (function() {
 				setFont(26, "#000", "center");
 				g.fillText("Stage", x, y - 100); // 20, 244);
 			}, this);
-	}
+	},
 
-	LayerStageIntro.prototype.draw = function() {
-		this.image.draw();
-	};
-	
-	function tastyKey(k) {
-		switch(k) {
-		case KeyEvent.DOM_VK_SPACE: return true;
-		case KeyEvent.DOM_VK_LEFT: return true;
-		case KeyEvent.DOM_VK_RIGHT: return true;
-		case KeyEvent.DOM_VK_UP: return true;
-		case KeyEvent.DOM_VK_DOWN: return true;
+	draw: function() {
+		var alpha = (time() - this.timeCreated) / dialogFadeTime;
+		if (alpha < 1) {
+			g.globalAlpha = alpha;
 		}
-		return false;
-	}
+		this.image.draw(0, 0);
+	},
 
-	LayerStageIntro.prototype.onKeyPress = function(k) {
+	onKeyPress: function(k) {
 		var tasty = tastyKey(k);
 		if ((xNoScreenDelays || 500 <= time() - this.timeCreated) && tasty)
 			finishStageIntro(this);
 		return tasty;
-	};
+	}
+});
 
-	return LayerStageIntro;
-})();
+function tastyKey(k) {
+	switch(k) {
+	case KeyEvent.DOM_VK_SPACE: return true;
+	case KeyEvent.DOM_VK_LEFT: return true;
+	case KeyEvent.DOM_VK_RIGHT: return true;
+	case KeyEvent.DOM_VK_UP: return true;
+	case KeyEvent.DOM_VK_DOWN: return true;
+	}
+	return false;
+}
 
 function finishStageIntro(layer) {
 	layers.remove(layer);
-	beginShot();
+	beginLevel();
 }
 
 function beginGame() {
@@ -2495,11 +2718,8 @@ function beginGame() {
 	layers.push(new LayerGameIntro());
 }
 
-var LayerGameIntro = (function() {
-	
-	LayerGameIntro.extend(Layer);
-
-	function LayerGameIntro() {
+var LayerGameIntro = Layer.extend({
+	init: function() {
 		this.gameTime = time() - timeGameStart;
 		this.timeCreated = time();
 		
@@ -2517,134 +2737,147 @@ var LayerGameIntro = (function() {
 				g.fillText("Hello", 65, 240);
 				g.fillText("Cannon", 65, 330);
 			}, this);
-	}
+	},
 
-	LayerGameIntro.prototype.draw = function() {
-		this.image.draw();
-	};
-	
-	function tastyKey(k) {
-		switch(k) {
-		case KeyEvent.DOM_VK_SPACE: return true;
-		case KeyEvent.DOM_VK_LEFT: return true;
-		case KeyEvent.DOM_VK_RIGHT: return true;
-		case KeyEvent.DOM_VK_UP: return true;
-		case KeyEvent.DOM_VK_DOWN: return true;
+	draw: function() {
+		var alpha = (time() - this.timeCreated) / dialogFadeTime;
+		if (alpha < 1) {
+			g.globalAlpha = alpha;
 		}
-		return false;
-	}
+		this.image.draw(0, 0);
+	},
 
-	LayerGameIntro.prototype.onKeyPress = function(k) {
+	onKeyPress: function(k) {
 		var tasty = tastyKey(k);
 		if ((xNoScreenDelays || 500 <= time() - this.timeCreated) && tasty)
 			finishGameIntro(this);
 		return tasty;
-	};
-
-	return LayerGameIntro;
-})();
+	}
+});
 
 function finishGameIntro(layer) {
 	layers.remove(layer);
-	nextShot();
+	nextLevel();
 }
 
-// Draws with total render radius of r * 1.25
-CanvasRenderingContext2D.prototype.drawGlowingGlassBall = function(x, y, r, color) {
-	var grad;
-	
-	var c = color;
-	
-	// Draw black edge accent and glow.
-	var cedge = "#000";
-	grad = this.createRadialGradient(x, y, 0, x, y, r * 1.2);
-	grad.addColorStop(0.833, c);
-	var ci = c.alpha(0.6); // Intensity of glow.
-	grad.addColorStop(0.843, ci.alpha(1.0));
-	grad.addColorStop(0.874, ci.alpha(0.5));
-	grad.addColorStop(0.915, ci.alpha(0.24));
-	grad.addColorStop(0.956, ci.alpha(0.1));
-	grad.addColorStop(1.0, ci.alpha(0.0));
-	this.fillStyle = grad;
-	this.fillCircle(x, y, r * 1.2);
-	this.drawGlassBall(x, y, r, color);
-}
+appendtoclass(CanvasRenderingContext2D, {
 
-CanvasRenderingContext2D.prototype.drawEgg = function(x, y, a, b, color, angle) {
-	g.save();
-	g.rotate(angle);
-	g.scale(a / b, b / b);
-	this.drawGlassBall(x, y, b, color, angle);
-	g.restore();
-}
+	// Draws with total render radius of r * 1.25
+	drawGlowingGlassBall: function(x, y, r, color) {
+		var grad;
+		
+		var c = color;
+		
+		// Draw black edge accent and glow.
+		var cedge = "#000";
+		grad = this.createRadialGradient(x, y, 0, x, y, r * 1.2);
+		grad.addColorStop(0.833, c);
+		var ci = c.alpha(0.6); // Intensity of glow.
+		grad.addColorStop(0.843, ci.alpha(1.0));
+		grad.addColorStop(0.874, ci.alpha(0.5));
+		grad.addColorStop(0.915, ci.alpha(0.24));
+		grad.addColorStop(0.956, ci.alpha(0.1));
+		grad.addColorStop(1.0, ci.alpha(0.0));
+		this.fillStyle = grad;
+		this.fillCircle(x, y, r * 1.2);
+		this.drawGlassBall(x, y, r, color);
+	},
 
-// Draws with total render radius of r * 1.25
-CanvasRenderingContext2D.prototype.drawGlassBall = function(x, y, r, color /*, shineAngle */) {
-	var grad;
-	
-	var c = color;
-	
-	// Draw black edge accent and glow.
-	var cedge = "#000";
-	grad = this.createRadialGradient(x, y, 0, x, y, r * 1.2);
-	grad.addColorStop(0.5, c.shiftColor(cedge, 0.0));
-	grad.addColorStop(0.75, c.shiftColor(cedge, 0.075));
-	grad.addColorStop(0.8, c.shiftColor(cedge, 0.125));
-	grad.addColorStop(0.833, c.shiftColor(cedge, 0.225));
-	var ci = c.alpha(0.6); // Intensity of glow.
-	grad.addColorStop(0.843, ci.alpha(1.0));
-	grad.addColorStop(0.874, ci.alpha(0.5));
-	grad.addColorStop(0.915, ci.alpha(0.24));
-	grad.addColorStop(0.956, ci.alpha(0.1));
-	grad.addColorStop(1.0, ci.alpha(0.0));
-	this.fillStyle = grad;
-	this.fillCircle(x, y, r * 1.2);
-	
-	var light = "#fff";
+	drawEgg: function(x, y, a, b, color, angle) {
+		g.save();
+		g.rotate(angle);
+		g.scale(a / b, b / b);
+		this.drawGlassBall(x, y, b, color, angle);
+		g.restore();
+	},
 
-	var dist = r * 0.57;
-	var angl = (-arguments[4] || 0) + shineAngle;
-	var ox = dist * Math.cos(angl);
-	var oy = dist * Math.sin(angl);
-	
-	// Draw general shine.
-	grad = this.createRadialGradient(ox * 1.1, oy * 1.1, 0, ox * 0.55, oy * 0.55, r * 0.8);
-	grad.addColorStop(0.0, light.alpha(0.3)); // Brightness.
-	grad.addColorStop(1.0, light.alpha(0.0));
-	this.fillStyle = grad;
-	this.fillCircle(ox * 0.55, oy * 0.55, r * 0.8);
-	
-	// Draw reflection of light source.
-	var ld = light.alpha(0.9); // Brightness.
-	grad = this.createRadialGradient(ox, oy, 0, ox, oy, r * 0.4);
-	grad.addColorStop(0.0, ld.alpha(1.0));
-	grad.addColorStop(0.05, ld.alpha(1.0));
-	grad.addColorStop(0.15, ld.alpha(0.9));
-	grad.addColorStop(0.4, ld.alpha(0.43));
-	grad.addColorStop(0.5, ld.alpha(0.2));
-	grad.addColorStop(0.6, ld.alpha(0.1));
-	grad.addColorStop(1.0, ld.alpha(0.0));
-	this.fillStyle = grad;
-	this.fillCircle(ox, oy, r * 0.4);
-}
+	// Draws with total render radius of r * 1.25
+	drawGlassBall: function(x, y, r, color /*, shineAngle */) {
+		var grad;
+		
+		var c = color;
+		
+		// Draw color.
+		this.fillStyle = c;
+		this.fillCircle(x, y, r);
+		
+		// Egg spots
+		// ... todo...
+		
+		// Draw black edge accent and glow.
+		var cedge = "#000";
+		grad = this.createRadialGradient(x, y, 0, x, y, r * 1.2);
+		grad.addColorStop(0.5, cedge.alpha(0.0));
+		grad.addColorStop(0.75, cedge.alpha(0.075));
+		grad.addColorStop(0.8, cedge.alpha(0.125));
+		grad.addColorStop(0.833, cedge.alpha(0.225));
+		var ci = c.alpha(0.6); // Intensity of glow.
+		grad.addColorStop(0.843, ci.alpha(1.0));
+		grad.addColorStop(0.874, ci.alpha(0.5));
+		grad.addColorStop(0.915, ci.alpha(0.24));
+		grad.addColorStop(0.956, ci.alpha(0.1));
+		grad.addColorStop(1.0, ci.alpha(0.0));
+		this.fillStyle = grad;
+		this.fillCircle(x, y, r * 1.2);
+		
+		var light = "#fff";
 
-CanvasRenderingContext2D.prototype.drawStar = function(x, y, r, rotation) {
-	this.fillStar(x, y, r * 0.382, r, rotation - Math.PI * 0.5, 5);
-}
+		var dist = r * 0.57;
+		var angl = -firstdefined(arguments[4], 0) + shineAngle;
+		var p = cart(angl, dist);
+		var ox = p[0];
+		var oy = p[1];
+		
+		// Draw general shine.
+		grad = this.createRadialGradient(ox * 1.1, oy * 1.1, 0, ox * 0.55, oy * 0.55, r * 0.8);
+		grad.addColorStop(0.0, light.alpha(0.3)); // Brightness.
+		grad.addColorStop(1.0, light.alpha(0.0));
+		this.fillStyle = grad;
+		this.fillCircle(ox * 0.55, oy * 0.55, r * 0.8);
+		
+		// Draw reflection of light source.
+		var ld = light.alpha(0.9); // Brightness.
+		grad = this.createRadialGradient(ox, oy, 0, ox, oy, r * 0.4);
+		grad.addColorStop(0.0, ld.alpha(1.0));
+		grad.addColorStop(0.05, ld.alpha(1.0));
+		grad.addColorStop(0.15, ld.alpha(0.9));
+		grad.addColorStop(0.4, ld.alpha(0.43));
+		grad.addColorStop(0.5, ld.alpha(0.2));
+		grad.addColorStop(0.6, ld.alpha(0.1));
+		grad.addColorStop(1.0, ld.alpha(0.0));
+		this.fillStyle = grad;
+		this.fillCircle(ox, oy, r * 0.4);
+	},
 
-CanvasRenderingContext2D.prototype.drawDialog = function(x, y, w, h, color) {
-	var shine = "#fff";
-	var roundy = 15;
-	this.fillStyle = shine.alpha(0.95);
-	this.strokeStyle = color;
-	this.lineWidth = 12;
-	this.lineCap = "butt";
-	this.fillRect(x, y, w, h);
-	this.strokeRoundRect(x, y, w, h, roundy);
-	forNum(4, function(i) {
-		var alpha = (3 - i) * 0.1;
-		this.strokeStyle = shine.alpha(alpha);
-		this.lineWidth = (i + 1) * 2.25;
-		this.strokeRoundRect(x - 2, y - 2, w, h, roundy);
-	}, this);
-}
+	drawStar: function(x, y, r, rotation) {
+		this.fillStar(x, y, r * 0.382, r, rotation - Math.PI * 0.5, 5);
+	},
+
+	drawDialog: function(x, y, w, h, color) {
+		var shine = "#fff";
+		var roundy = 5;
+		this.fillStyle = shine.alpha(0.95);
+		this.strokeStyle = color;
+		this.lineWidth = 12;
+		this.lineCap = "butt";
+		
+		// Colored outline.
+		if (false) {
+			this.fillRect(x, y, w, h);
+			this.strokeRoundRect(x, y, w, h, roundy);
+		}
+		else {
+			this.fillRoundRect(x, y, w, h, roundy * 2);
+		}
+		
+		// Shiny edges.
+		if (false) {
+			forNum(4, function(i) {
+				var alpha = (3 - i) * 0.1;
+				this.strokeStyle = shine.alpha(alpha);
+				this.lineWidth = (i + 1) * 2.25;
+				this.strokeRoundRect(x - 2, y - 2, w, h, roundy);
+			}, this);
+		}
+	}
+});
