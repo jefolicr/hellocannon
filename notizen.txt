@@ -1,0 +1,39 @@
+Awards:
+Highest Level   ?
+Longest Hit Run ?
+Bullseye Run    ?
+Most Gold Ever  ?
+Level 10 Gold   ?
+Level 10 Time   ?
+Level 100 Gold  ?
+Level 100 Time  ?
+Most Hits of 3  ?
+Bullseyes of 3  ?
+Most Hits of 10 ?
+Bullseyes of 10 ?
+
+
+
+Level variation:
+1 target
+2 targets
+4 targets
+16 targets
+bottom extended wall
+floor to bounce on, top extended wall
+opposite wall to bounce on, diagonal wall
+timed disappearing target
+bonus target, hit for flat cash bonus
+
+
+
+Details:
+
+- $1-$100 - fuel per shot
+- $25 - cannon ball
++ $1-$1000 - target reward
++ $400 - bonus target reward
+
+average normal target hit reward: $50
+average single target hit rate: 50%
+

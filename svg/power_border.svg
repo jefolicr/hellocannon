@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+<svg
+   xmlns:svg="http://www.w3.org/2000/svg"
+   xmlns="http://www.w3.org/2000/svg"
+   version="1.0"
+   width="9"
+   height="101"
+   id="asset-power-border">
+  <defs
+     id="defs6" />
+  <path
+     d="M 0.13517131,0.13517131 L 0,0.5 L 0,100.5 L 0.16220557,100.83779 L 0.5,101 L 8.5,101 L 8.8377944,100.83779 L 9,100.5 L 9,0.5 L 8.8377944,0.16220557 L 8.5,0 L 0.5,0 L 0.13517131,0.13517131 z M 1,1 L 8,1 L 8,100 L 1,100 L 1,1 z"
+     id="path3"
+     style="fill:#6b6b6b;fill-opacity:1" />
+</svg>

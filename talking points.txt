@@ -1,0 +1,22 @@
+This is a super simple project, and I have almost nothing to say about it, but I thought it would be fun to present.
+
+I was suddenly inspired to very quickly make a very simple game. I wanted to get a feel for javascript and what is immediately available without plugins or external libraries or apis. I also wanted to minimize the time I spent teaching myself new things. I threw together the basic gameplay in just a couple days. Eventually, I will get around to adding more fun graphics and sound and gameplay.
+
+Under the hood, everything is very simple and straightforward. I didn't use any external API's and libraries. I will explore this more as the need arises. I am of course using the canvas tag. For audio, I'm using the audio tag. Everything else is straightup javascript. Thanks to my lack of internet at the beginning, I coded most of it in a cross of pseudocode and javascript, which was actually pretty fun, and I'll have to try that again sometime.
+
+Sound: 
+   * half the time it doesn't play right away
+   * half the time it doesn't play at all
+   * I copy and pasted somebody's simple sound manager
+
+Javascript: 
+   * msg passing - it's a little scary when things go wrong but no errors are thrown
+   * limited scope - i ran into trouble just once when i accidentally did not redeclare a variable to make it local in different functions, and when used in conjunction, they interfered with eachother
+   * i love the extendability of the ability to change classes on the fly. reminds me of ruby's mixins.
+
+Canvas:
+   * i love that it's super simple and it works
+   * no need to call flush or worry about double buffering or flickering - coming from Java, this was nice
+
+Keyboard Input:
+   * I copy and pasted somebody's code for defining key codes
