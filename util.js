@@ -65,6 +65,10 @@ function msToString(ms) {
     return s;
 }
 
+//
+// Color.
+//
+
 // that - another color, amount - 0 to 1.0, return new RGBColor.
 // TODO: Make this work with alpha.
 RGBColor.prototype.linear = function(that, amount) {
@@ -75,11 +79,41 @@ RGBColor.prototype.linear = function(that, amount) {
     return new RGBColor('rgb('+r+','+g+','+b+')');
 }
 
+// string color c1, c2, float 0<=amount<=1.0
+// return string color
 function linearColor(c1, c2, amount) {
-    rgb1 = new RGBColor(c1);
-    rgb2 = new RGBColor(c2);
-    rgbResult = rgb1.linear(rgb2, amount);
+    var rgb1 = new RGBColor(c1);
+    var rgb2 = new RGBColor(c2);
+    var rgbResult = rgb1.linear(rgb2, amount);
     return rgbResult.toHex();
+}
+
+// string color c, float 0<=a<=1.0
+// return string color
+function setAlpha(c, a) {
+    
+}
+
+// return string color
+function randHue() {
+    var cr = rand();
+    var cg = rand();
+    var cb = rand();
+    var x = Math.min(cr, Math.min(cg, cb));
+    cr -= x;
+    cg -= x;
+    cb -= x;
+    x = Math.max(cr, Math.max(cg, cb));
+    if (x == 0) {
+        return randHue();
+    }
+    else {
+        x = 1.0 / x;
+        cr = Math.floor(cr * x * 255);
+        cg = Math.floor(cg * x * 255);
+        cb = Math.floor(cb * x * 255);
+    }
+    return 'rgb('+cr+', '+cg+', '+cb+')';
 }
 
 //
@@ -282,6 +316,14 @@ var Point = (function() {
     return Point;
 })();
 
+function project(x1, y1, x2, y2) {
+    var p = new Array();
+    var r = (x1 * x2 +  y1 * y2) / (x2 * x2 + y2 * y2);
+    p[0] = r * x2;
+    p[1] = r * y2;
+    return p;
+}
+
 function mag(dx, dy) {
     return Math.sqrt(dx * dx + dy * dy);
 }
@@ -448,43 +490,40 @@ if (typeof KeyEvent == "undefined") {
 
 //
 // Audio
-// Copied from http://www.storiesinflight.com/html5/audio.html
+// 
+// Credit due: http://www.storiesinflight.com/html5/audio.html
 //
 
 const enable_audio = true;
 
-var channel_max = 10; // number of channels
-audiochannels = new Array();
-for (a=0;a<channel_max;a++) { // prepare the channels
-    audiochannels[a] = new Array();
-    audiochannels[a]['channel'] = new Audio(); // create a new audio object
-    audiochannels[a]['finished'] = -1; // expected end time for this channel
+const channel_max = 12; // number of channels
+
+const audiochannels = new Array();
+
+for (var i = channel_max; i-- > 0; ) { // prepare the channels
+    audiochannels[i] = new Array();
+    audiochannels[i]['channel'] = new Audio(); // create a new audio object
+    audiochannels[i]['finished'] = -1; // expected end time for this channel
 }
+
 function play_multi_sound(s) {
     if (enable_audio == false)
         return;
-    for (a=0;a<audiochannels.length;a++) {
-        thistime = new Date();
-        if (audiochannels[a]['finished'] < thistime.getTime()) { // is this channel finished?
-            audiochannels[a]['finished'] = thistime.getTime() + document.getElementById(s).duration*1000;
-            audiochannels[a]['channel'].src = document.getElementById(s).src;
-            audiochannels[a]['channel'].load();
-            audiochannels[a]['channel'].play();
-            break;
+    var thistime = new Date();
+    var mostchannel = null;
+    for (var i = channel_max; i-- > 0; ) {
+        if (!mostchannel || audiochannels[i]['finished'] < mostchannel['finished']) {
+            mostchannel = audiochannels[i];
         }
     }
+    mostchannel['finished'] = thistime.getTime() + document.getElementById(s).duration * 1000;
+    mostchannel['channel'].src = document.getElementById(s).src;
+    mostchannel['channel'].load();
+    mostchannel['channel'].play();
 }
-
-//
-// My addition to above, for use with animated game to eliminate
-// multiple of the same audio played at exactly the same time.
-//
 
 audiotoplay = new Array();
 function push_multi_sound(s) {
-    for (var i = 0; i < audiotoplay.length; i++)
-        if (audiotoplay[i] == s)
-            return;
     audiotoplay.push(s);
 }
 function play_all_multi_sound() {

@@ -1,9 +1,36 @@
-<!DOCTYPE HTML>
+<!DOCTYPE html>
 <html>
 <head>
 
+<title>Jeff Hollocher - Hello Cannon</title>
+
+<meta http-equiv="content-type" content="text/html;charset=utf-8" />
+<meta http-equiv="Content-Style-Type" content="text/css" />
+<style type="text/css">
+<!--
+.hstable {
+}
+.hstable thead {
+    font-weight: bold;
+}
+.hstable tbody tr:nth-child(odd) {
+    background-color: #ffffff;
+}
+.hstable tbody tr:nth-child(even) {
+    background-color: #eeeeff;
+}
+body {
+    font-family: "Trebuchet MS", Helvetica, sans-serif;
+}
+-->
+</style>
+
+<script type="text/javascript" src="jquery.1.4.2.min.js"></script>
+<script type="text/javascript" src="modernizr-1.7.min.js"></script>
 <script type="text/javascript" src="rgbcolor.js"></script>
 <script type="text/javascript" src="util.js"></script>
+<script type="text/javascript" src="html5pane.js"></script>
+<script type="text/javascript" src="highscores.js"></script>
 <script type="text/javascript" src="hellocannon.js"></script>
 
 <audio id="bonus" src="wav/bonus.wav" preload="auto"></audio>
@@ -14,17 +41,42 @@
 <audio id="sink" src="wav/sink.wav" preload="auto"></audio>
 
 </head>
-<body bgcolor="#fff">
+
+<body bgcolor="#ffffff">
 
 <div id="game" style="float: left;">
-<canvas id="hellocannon" width=600 height=400>your browser does not support the canvas tag </canvas>
+<canvas id="hellocannon" width=600 height=400>
+Your browser is not good enough for Hello Cannon. It's not you. It's your browser.
+</canvas>
 </div>
+
+<div id="highscores" style="float: left;">
+    <div id="namediv">
+        Enter your name for highscores:<br />
+        <input id="namefield" type="text" size="20" placeholder="Your name" maxlength="32" />
+    </div>
+    <div id="hslocal" class="hstable" style="float: left;"></div>
+    <div id="hsglobal" class="hstable" style="float: left;"></div>
+</div>
+
+<div id="achievements" style="float: right;"></div>
+
+<div id="instructions" style="clear: both;">
+    <b>HOW TO PLAY:</b><br />
+    Use arrow keys and press space bar to fire!<br />
+    Hit the targets for gold and eyes!!
+</div>
+
+<div id="html5"></div>
 
 <div id="debug"></div>
 
 <script type="text/javascript">
-main();
+createHtml5Pane();
+initHighscores();
+initHellocannon();
 </script>
 
 </body>
+
 </html>

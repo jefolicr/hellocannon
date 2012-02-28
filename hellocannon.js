@@ -4,6 +4,8 @@
 //
 
 // Debugging.
+const showFps = false;
+const showAchievements = false;
 const alwaysHaveTrajectory = false;
 const alwaysHaveSink = false;
 const alwaysHaveBonus = false;
@@ -18,24 +20,10 @@ var frameCount;
 var timeElapsed;
 var _dms;
 const targetMspf = 25;
+const floatingMspf = false;
 const canvasW = 420;
 const canvasH = 420;
 const fontFace = '"Trebuchet MS", Helvetica, sans-serif';
-
-// Mechanics.
-const gravity = 0.000336;
-const fuelPower = 0.0064;
-const goldFactor = 0.87;
-const angleSteps = 85;
-const fuelSteps = 20;
-const noise = 0;
-const shotCost = 50;
-const slowFactor = 0.25;
-const rescoreTime = 500;
-const targetBonus = 100;
-const levelsPerBonus = 20;
-const levelBonus = 400;
-const timeToShoot = 10000;
 
 // Bounds.
 const shotRadius = 5;
@@ -48,48 +36,57 @@ const targetMaxX = canvasW - 10;
 const targetMinY = 10 + barHeight;
 const targetMaxY = canvasH - 10;
 
+// Mechanics.
+const gravity = 0.000336;
+const angleSteps = 125;
+const fuelSteps = 20;
+const shotCost = 50;
+const slowFactor = 0.25;
+const msPerStarPower = 20000;
+
 // State.
 var tms; // total ms time
 var dms; // change ms time for current tick
-var level;
+var shots;
 var gold;
 var goldThisTurn;
-var totalShotFired;
 var totalFuelUsed;
 var totalTargetHit;
 var totalGoldWon;
 var cannon;
 var trajectory;
+var theShot
 var gobs;
 var isCannonFired;
 var timeOfAnyHit;
-var timeLevelBonusGiven;
 var timeGameStart;
 var timeTurnStart;
-var showTrajectory;
+var timeStarPower;
 var hitRun;
 var eyeRun;
 var hitsMade;
 var eyesMade;
+var eyesTotal;
 var numTargets;
 var numSinks;
 var timePlayAdjustSound;
+var progress;
 
-// Achievements.   // My personal records.
-var highestLevel;  // 156
-var longestHitRun; // 22
-var longestEyeRun; // 7
-var mostGoldEver;  // 6810
-var level10Gold;   // 2475
-var level10Time;   // 32005
-var level100Gold;  // 5515
-var level100Time;  // 970250
-var mostHitsOf3;   // 3
-var mostEyesOf3;   // 2
-var mostHitsOf10;  // 5
-var mostEyesOf10;  // 3
+// Achievements.
+var mostShots;
+var longestHitRun;
+var longestEyeRun;
+var mostGoldEver;
+var shot10Gold;
+var shot10Time;
+var shot100Gold;
+var shot100Time;
+var mostHitsOf3;
+var mostEyesOf3;
+var mostHitsOf10;
+var mostEyesOf10;
 
-function main() {
+function initHellocannon() {
     canvas = document.getElementById('hellocannon');
     g = canvas.getContext('2d');
     fitToScreen();
@@ -104,7 +101,8 @@ function main() {
     layers.push(new LayerGame());
     newGame();
     animate(nextFrame, targetMspf);
-    document.onkeydown = onKeyDown;
+    document.onkeydown = onKeyPress;
+    document.onkeyup = onKeyRelease;
 }
 
 function fitToScreen() {
@@ -145,10 +143,18 @@ function setFont(size) {
     g.font = 'bold '+size+'pt'+fontFace;
 }
 
-function onKeyDown(e) {
+function onKeyPress(e) {
     var k = e.keyCode;
     for (var i = 0; i < layers.length; i++) {
-        if (layers[i].onKeyDown(k))
+        if (layers[i].onKeyPress(k))
+            break;
+    }
+}
+
+function onKeyRelease(e) {
+    var k = e.keyCode;
+    for (var i = 0; i < layers.length; i++) {
+        if (layers[i].onKeyRelease(k))
             break;
     }
 }
@@ -177,27 +183,29 @@ function nextFrame() {
             frameCount = 0;
             timeElapsed = timeElapsed % 1000;
         }
-        _dms = Math.min(_dms, 25);
+        _dms = Math.min(_dms, targetMspf);
     }
-    step(_dms);
+    step(floatingMspf ? _dms : targetMspf);
 }
 
 function step(ms) {
+    // Timing / slowing.
     dms = ms;
     if (tms - timeOfAnyHit < 50)
         dms *= slowFactor;
     tms += dms;
+    
+    // Step layers.
     for (var i = 0; i < layers.length; i++)
         layers[i].step();
+    
+    // Audio.
     play_all_multi_sound();
 }
 
 function newGame() {
-    timeLevelBonusGiven = -60000;
-    level = 0;
-    gold = 250;
-    showTrajectory = 0;
-    totalShotFired = 0;
+    shots = 0;
+    gold = 250
     totalFuelUsed = 0;
     totalTargetHit = 0;
     totalGoldWon = 0;
@@ -208,75 +216,61 @@ function newGame() {
     cannon.angle = 0;
     cannon.angleStep = Math.floor(angleSteps / 2);
     timeGameStart = time();
+    progress = (timeGameStart & 0xffffffff);
+    timeStarPower = 0;
     hitRun = 0;
     eyeRun = 0;
-    highestLevel = 0;
+    eyesTotal = 0;
+    mostShots = 0;
     longestHitRun = 0;
     longestEyeRun = 0;
     mostGoldEver = 0;
-    level10Gold = 0;
-    level10Time = 0;
-    level100Gold = 0;
-    level100Time = 0;
+    shot10Gold = 0;
+    shot10Time = 0;
+    shot100Gold = 0;
+    shot100Time = 0;
     mostHitsOf3 = 0;
     mostEyesOf3 = 0;
     mostHitsOf10 = 0;
     mostEyesOf10 = 0;
-    nextLevel();
+    nextShot();
 }
 
-function nextLevel() {
-    level++;
-    if (level == 10) {
-        level10Gold = gold;
-        level10Time = time() - timeGameStart;
-    }
-    if (level == 100) {
-        level100Gold = gold;
-        level100Time = time() - timeGameStart;
-    }
-    if (level % levelsPerBonus == 0) {
-        changeGold(levelBonus);
-        timeLevelBonusGiven = tms;
-        push_multi_sound('bonus');
-    }
-    newTurn();
-}
-
-function newTurn() {
+function nextShot() {
     turnOver = false;
     isCannonFired = false;
     goldThisTurn = 0;
     gobs = [];
     cannon.dx = 0;
     cannon.dy = cannonMinY + randInt(cannonMaxY - cannonMinY);
+    numSinks = alwaysHaveSink ? 1 : 0;
     numTargets = 1;
-    if (rand() < 0.142857)
-        numTargets = (rand() < 0.142857) ? 10 : 3;
+    numTargetBonuses = alwaysHaveBonus ? 1 : 0;
+    if (shots) {
+        if (shots >= 10 && rand() < 0.142857)
+            numSinks = (shots >= 30 && rand() < 0.142857) ? 2 : 1;
+        if (shots >= 5 && rand() < 0.142857)
+            numTargets = (shots >= 20 && rand() < 0.142857) ? 10 : 3;
+        if (shots >= 10 && rand() < 0.05)
+            numTargetBonuses = 1;
+    }
+    if (alwaysHaveTrajectory)
+        timeStarPower = tms;
+    for (var i = 0; i < numSinks; i++)
+        (rand() < 0.142857) ? numTargetBonuses++ : numTargets++;
     for (var i = 0; i < numTargets; i++)
         gobs.push(newTarget());
-    if (alwaysHaveTrajectory)
-        showTrajectory = 1;
-    if (showTrajectory) {
-        showTrajectory--;
+    for (var i = 0; i < numTargetBonuses; i++)
+        gobs.push(newTargetBonus());
+    if (timeStarPower && (tms - timeStarPower < msPerStarPower))
         gobs.push(trajectory);
-    }
-    numSinks = 0;
-    if (alwaysHaveSink)
-        numSinks = 1;
-    if (rand() < 0.142857)
-        numSinks = (rand() < 0.142857) ? 3 : 1;
     for (var i = 0; i < numSinks; i++)
         gobs.push(newSink());
     gobs.push(cannon);
     hitsMade = 0;
     eyesMade = 0;
-    timeTurnStart = time();
+    timeTurnStart = tms;
     updateAchievements();
-}
-
-function retryLevel() {
-    newTurn();
 }
 
 function newSink() {
@@ -290,24 +284,28 @@ function newTarget() {
     var y = targetMinY + randInt(targetMaxY - targetMinY);
     var nRings;
     var ringWidth = ringWidthAvg;
-    var bonus = 0;
-    if (rand() < 0.142857)
-        bonus = (rand() < 0.142857) ? 2 : 1;
-    if (alwaysHaveBonus)
-        bonus = 1;
-    if (level < 5) {        nRings = 4; ringWidth *= 4.2; }
-    else if (level < 10) {  nRings = 4; ringWidth *= 3.1; }
-    else if (level < 20) {  nRings = 4; ringWidth *= 2.5; }
-    else if (level < 30) {  nRings = 3; ringWidth *= 2.5; }
-    else if (level < 40) {  nRings = 3; ringWidth *= 2.0; }
-    else if (level < 50) {  nRings = 3; ringWidth *= 1.8; }
-    else if (level < 60) {  nRings = 3; ringWidth *= 1.6; }
-    else if (level < 70) {  nRings = 2 + randInt(2); ringWidth *= 1.5; }
-    else if (level < 80) {  nRings = 2; ringWidth *= 1.3; }
-    else if (level < 90) {  nRings = 2; ringWidth *= 1.15; }
-    else if (level < 100) { nRings = 1 + randInt(2); ringWidth *= 1.0; }
-    else {                  nRings = 1; ringWidth *= 0.9; }
-    return new Target(x, y, nRings, ringWidth, bonus);
+         if (shots <  5)  { nRings = 4; ringWidth *= 7.0; }
+    else if (shots < 10)  { nRings = 4; ringWidth *= 3.5; }
+    else if (shots < 20)  { nRings = 4; ringWidth *= 2.5; }
+    else if (shots < 30)  { nRings = 3; ringWidth *= 2.5; }
+    else if (shots < 40)  { nRings = 3; ringWidth *= 2.0; }
+    else if (shots < 50)  { nRings = 3; ringWidth *= 1.8; }
+    else if (shots < 60)  { nRings = 3; ringWidth *= 1.6; }
+    else if (shots < 70)  { nRings = 2 + randInt(2); ringWidth *= 1.5; }
+    else if (shots < 80)  { nRings = 2; ringWidth *= 1.3; }
+    else if (shots < 90)  { nRings = 2; ringWidth *= 1.15; }
+    else if (shots < 100) { nRings = 1 + randInt(2); ringWidth *= 1.0; }
+    else                  { nRings = 1; ringWidth *= 0.9; }
+    return new Target(x, y, nRings, ringWidth);
+}
+
+function newTargetBonus() {
+    var newt = newTarget();
+    var x = newt.dx;
+    var y = newt.dy;
+    var r = newt.radius + 4;
+    var bonus = (rand() < 0.5) ? 1 : 0;
+    return new TargetBonus(x, y, r, bonus);
 }
 
 var LayerGame = (function() {
@@ -316,16 +314,41 @@ var LayerGame = (function() {
     }
     
     LayerGame.prototype.step = function() {
-        // Fire automatically on time out.
-        if (!isCannonFired && time() - timeTurnStart >= timeToShoot)
-            fireCannon();
-    
+        // If turn is just beginning.
+        if (tms - timeTurnStart < 200 || isCannonFired) {
+            this.initialPauseOff = false;
+            this.timeKeyPressLeft = undefined;
+            this.timeKeyPressRight = undefined;
+            this.timeKeyPressUp = undefined;
+            this.timeKeyPressDown = undefined;
+        }
+        else {
+            this.initialPauseOff = true;
+            const pauseBefore = 500;
+            if (this.timeKeyPressUp && tms - this.timeKeyPressUp > pauseBefore) {
+                changeAngle(2);
+                this.timeKeyPressUp += 25;
+            }
+            if (this.timeKeyPressDown && tms - this.timeKeyPressDown > pauseBefore) {
+                changeAngle(-2); 
+                this.timeKeyPressDown += 25;
+            }
+            if (this.timeKeyPressLeft && tms - this.timeKeyPressLeft > pauseBefore) {
+                changeFuel(-1);
+                this.timeKeyPressLeft += 75;
+            }
+            if (this.timeKeyPressRight && tms - this.timeKeyPressRight > pauseBefore) {
+                changeFuel(1);
+                this.timeKeyPressRight += 75;
+            }
+        }
+        
         // Step game objects.
         for (var i = 0; i < gobs.length; i++)
             gobs[i].step();
             
         // Draw background.
-        g.fillStyle = '#91c2ff';
+        g.fillStyle = '#eee';
         g.fillRect(0, 0, canvasW, canvasH);
         
         // Draw game objects.
@@ -348,59 +371,77 @@ var LayerGame = (function() {
             g.restore();
         }
             
-        // Draw overhead display.
+        // Draw overhead background.
         g.fillStyle = 'rgba(0, 0, 0, 0.2)';
-        g.fillRect(0, 0, canvasW, 40);
-        setFont(13);
+        g.fillRect(0, 0, canvasW, 30);
+
+        // Draw total bull's eyes.
+        setFont(18);
+        g.textAlign = 'center';
         g.fillStyle = '#000';
-        g.lineWidth = 1.0
-        g.fillText('Level '+level, 170, 16);
-        g.fillText(gold+' Gold', 170, 34);
+        g.fillText(shots+' Shots', 100, 23);
+        g.textAlign = 'left';
+
+        // Draw gold.
+        setFont(18);
+        g.fillStyle = '#000';
+        g.fillText(gold+' Gold', 250, 23);
         if (gold <= 0) {
-            g.fillStyle = '#f00';
-            g.fillText(gold, 170, 34);
+            g.fillStyle = '#d00';
+            g.fillText(gold, 250, 23);
         }
-        g.fillStyle = '#000';
-        g.font = '8pt'+fontFace;
-        g.fillText(fps+' fps', 2, 10);
         
-        // Draw Levels Bonus.
-        var dt = tms - timeLevelBonusGiven;
-        const totalTime = 6000.0;
-        const fadeTime = 2000.0;
-        const opaqueTime = totalTime - fadeTime;
-        if (dt < totalTime) {
-            setFont(24);
-            var alpha;
-            if (dt > opaqueTime)
-                alpha = 1.0 - ((dt - opaqueTime) * 1.0 / fadeTime);
-            else
-                alpha = 1.0;
-            g.textAlign = 'center';
-            g.lineWidth = 6;
-            g.lineJoin = 'round';
-            g.strokeStyle = 'rgba(0, 0, 0, '+alpha+')';
-            g.strokeText(levelsPerBonus+'-Levels!', canvasW / 2, 75);
-            g.strokeText('+'+levelBonus, canvasW / 2, 110);
-            g.fillStyle = 'rgba(255, 255, 255, '+alpha+')';
-            g.fillText(levelsPerBonus+'-Levels!', canvasW / 2, 75);
-            g.fillStyle = 'rgba(0, 255, 0, '+alpha+')';
-            g.fillText('+'+levelBonus, canvasW / 2, 110);
-            g.textAlign = 'left';
+        // Draw star power.
+        if (timeStarPower && tms - timeStarPower < msPerStarPower) {
+            g.save();
+            g.translate(200, 15);
+            g.fillStyle = '#000';
+            g.beginPath();
+            var f = 1 - (tms - timeStarPower) / msPerStarPower;
+            g.arc(0, 0, 12, 0, Math.PI * 2 * f, false);
+            g.lineTo(0, 0);
+            g.fill();
+            g.fillStyle = '#fc0';
+            g.fillStar(0, 0, 12, 0);
+            g.restore();
+        }
+
+        // Draw fps.
+        if (showFps) {
+            g.fillStyle = '#000';
+            g.font = '8pt'+fontFace;
+            g.fillText(fps+' fps', 2, 10);
+        }
+        
+        // Throb name form if empty.
+        if (false && nameFieldValue == '') {
+            var alpha = (tms/2000.0);
+            alpha -= Math.floor(alpha);
+            document.getElementById('namediv').style.border = '4px solid rgba(255, 0, 0, '+alpha+')';
         }
     };
 
-    LayerGame.prototype.onKeyDown = function(k) {
-        if (time() - timeTurnStart < 200)
+    LayerGame.prototype.onKeyPress = function(k) {
+        if (!this.initialPauseOff)
             return false;
-        if (!isCannonFired) {
-            switch(k) {
-            case KeyEvent.DOM_VK_UP:    changeAngle(1); return true;
-            case KeyEvent.DOM_VK_DOWN:  changeAngle(-1); return true;
-            case KeyEvent.DOM_VK_LEFT:  changeFuel(-1); return true;
-            case KeyEvent.DOM_VK_RIGHT: changeFuel(1); return true;
-            case KeyEvent.DOM_VK_SPACE: fireCannon(); return true;
-            }
+        switch(k) {
+        case KeyEvent.DOM_VK_UP:    if (!this.timeKeyPressUp) {    changeAngle(1);  this.timeKeyPressUp = tms; }    return true;
+        case KeyEvent.DOM_VK_DOWN:  if (!this.timeKeyPressDown) {  changeAngle(-1); this.timeKeyPressDown = tms; }  return true;
+        case KeyEvent.DOM_VK_LEFT:  if (!this.timeKeyPressLeft) {  changeFuel(-1);  this.timeKeyPressLeft = tms; }  return true;
+        case KeyEvent.DOM_VK_RIGHT: if (!this.timeKeyPressRight) { changeFuel(1);   this.timeKeyPressRight = tms; } return true;
+        case KeyEvent.DOM_VK_SPACE: fireCannon(); return true;
+        }
+        return false;
+    };
+
+    LayerGame.prototype.onKeyRelease = function(k) {
+        if (!this.initialPauseOff)
+            return false;
+        switch(k) {
+        case KeyEvent.DOM_VK_UP:    this.timeKeyPressUp = undefined; return true;
+        case KeyEvent.DOM_VK_DOWN:  this.timeKeyPressDown = undefined; return true;
+        case KeyEvent.DOM_VK_LEFT:  this.timeKeyPressLeft = undefined; return true;
+        case KeyEvent.DOM_VK_RIGHT: this.timeKeyPressRight = undefined; return true;
         }
         return false;
     };
@@ -437,43 +478,49 @@ function changeFuel(n) {
     }
 }
 
+function fuelToPower(fuel) {
+    // return fuel * 0.0064;
+    return 0.042 + Math.pow(fuel, 0.9) * 0.009;
+}
+
 function fireCannon() {
     if (!alwaysHaveTrajectory)
         gobs.remove(trajectory);
+    shots++;
     isCannonFired = true;
     var dx = cannon.dx;
     var dy = cannon.dy;
-    var fuelNoise = (100.0 / fuelSteps) * noise * (rand() - 0.5);
-    var power = (cannon.fuel + fuelNoise) * fuelPower;
-    var angleNoise = (Math.PI / angleSteps) * noise * (rand() - 0.5);
-    var angle = (cannon.angle + angleNoise);
+    var power = fuelToPower(cannon.fuel);
+    var angle = cannon.angle;
     var vx = power * Math.cos(angle);
     var vy = power * Math.sin(angle);
     // Put shot before cannon and after targets.
-    gobs[gobs.length - 1] = new Shot(dx, dy, vx, vy);
+    theShot = new Shot(dx, dy, vx, vy);
+    gobs[gobs.length - 1] = theShot;
     gobs.push(cannon);
     push_multi_sound('firecannon');
 }
 
-function addAchievementHtml(s, name, value) {
-    return s+name+': '+value+'<br/>';
-}
-
 function updateAchievements() {
+    if (!showAchievements)
+        return;
     var ach = '';
-    ach = addAchievementHtml(ach, 'highestLevel', highestLevel);
-    ach = addAchievementHtml(ach, 'longestHitRun', longestHitRun);
-    ach = addAchievementHtml(ach, 'longestEyeRun', longestEyeRun);
-    ach = addAchievementHtml(ach, 'mostGoldEver', mostGoldEver);
-    ach = addAchievementHtml(ach, 'level10Gold', level10Gold);
-    ach = addAchievementHtml(ach, 'level10Time', level10Time);
-    ach = addAchievementHtml(ach, 'level100Gold', level100Gold);
-    ach = addAchievementHtml(ach, 'level100Time', level100Time);
-    ach = addAchievementHtml(ach, 'mostHitsOf3', mostHitsOf3);
-    ach = addAchievementHtml(ach, 'mostEyesOf3', mostEyesOf3);
-    ach = addAchievementHtml(ach, 'mostHitsOf10', mostHitsOf10);
-    ach = addAchievementHtml(ach, 'mostEyesOf10', mostEyesOf10);
-    ach = '<div style="margin: 10px; padding: 10px;"><b>Statistics</b><br/><br/>'+ach+'</div>';
+    var append = function(name, value) {
+        ach = ach+name+': '+value+'<br/>';
+    }
+    append('mostShots', mostShots);
+    append('longestHitRun', longestHitRun);
+    append('longestEyeRun', longestEyeRun);
+    append('mostGoldEver', mostGoldEver);
+    append('shot10Gold', shot10Gold);
+    append('shot10Time', shot10Time);
+    append('shot100Gold', shot100Gold);
+    append('shot100Time', shot100Time);
+    append('mostHitsOf3', mostHitsOf3);
+    append('mostEyesOf3', mostEyesOf3);
+    append('mostHitsOf10', mostHitsOf10);
+    append('mostEyesOf10', mostEyesOf10);
+    ach = '<div style="margin: 10px; padding: 10px;"><b>Statistics:</b><br />'+ach+'</div>';
     document.getElementById('debug').innerHTML = ach;
 }
 
@@ -490,7 +537,7 @@ var Cannon = (function() {
     Cannon.prototype.draw = function() {
         
         // Draw cannon.
-        g.strokeStyle = '#333';
+        g.strokeStyle = '#555';
         g.lineWidth = 4;
         g.strokeCircle(0, 0, 9.5);
         g.save();
@@ -499,21 +546,19 @@ var Cannon = (function() {
         g.fillRect(-9.5, -4, 23.5, 8);
         g.fillRoundRect(12.5, -6.5, 9, 13, 3);
         g.restore();
-        g.fillStyle = '#7a1e00';
+        g.fillStyle = '#555';
         g.fillCircle(0, 0, 2.5);
         
         // Draw fuel.
-        var bars = 2 + cannon.fuel / 3;
-        g.lineWidth = 0.0;
-        g.fillStyle = '#ea1e00';
+        var bars = cannon.fuel * 0.2;
+        g.lineWidth = 1.25;
+        g.fillStyle = '#000';
         g.translate(2, 23);
-        g.beginPath();
-        g.moveTo(0, 0);
-        g.lineTo(bars, 0);
-        g.lineTo(bars, -bars / 3);
-        g.lineTo(0, 0);
-        g.closePath();
-        g.fill();
+        for (var i = 0; i < bars; i++) {
+            const sx = 2.25
+            const sy = 0.75
+            g.strokeLine(i * sx, 0, i * sx, (i + 1) * -sy);
+        }
         g.fillStyle = '#000';
         setFont(10);
         g.fillText(cannon.fuel, 0, 12);
@@ -541,6 +586,7 @@ var Shot = (function() {
         this.timeStuck = undefined;
         this.timeFallenFromVision = undefined;
         this.timeCreated = tms;
+        progress = ((progress * 485207) & 0xffffffff) ^ 385179316;
     }
 
     Shot.prototype.step = function() {
@@ -614,36 +660,25 @@ var Shot = (function() {
 
 var Target = (function() {
 
-    function Target(dxi, dyi, nRings, ringWidth, bonus) {
+    function Target(dxi, dyi, nRings, ringWidth) {
         this.dx = dxi;
         this.dy = dyi;
-        this.dSqrd = Number.MAX_VALUE;
         this.nRings = nRings;
         this.ringWidth = ringWidth;
         this.radius = ringWidth * (nRings - 0.75);
-        this.bonus = bonus;
         this.hit = false;
         var rings = [];
         for (var i = 0; i < nRings; i++)
             rings.push(new Ring());
         this.rings = rings;
-        this.explosion = null;
-        this.extra = bonus==2 ? new Star(this.radius) : null;
     }
 
     Target.prototype.step = function() {
-        if (this.explosion != null) {
-            this.explosion.step();
-        }
-        if (this.extra) {
-            this.extra.step();
-        }
     };
 
     Target.prototype.draw = function() {
         with(this) {
-            var bonusColor = '#000';
-            bonusColor = (bonus == 1) ? '#0f4' : '#fc0';
+            var color = '#000';
             
             // Draw rings.
             for (var i = 0; i < nRings; i++) {
@@ -652,30 +687,15 @@ var Target = (function() {
             
             // Draw crosshairs.
             if (nRings == 1) {
-                if (explosion == null) {
+                if (this.rings[0].timeHit == undefined) {
                     const w = ringWidth;
-                    g.strokeStyle = bonusColor;
+                    g.strokeStyle = color;
                     g.lineWidth = w * 0.5;
                     g.strokeLine(-w, 0, 2.5 * -w, 0);
                     g.strokeLine(w, 0, 2.5 * w, 0);
                     g.strokeLine(0, -w, 0, 2.5 * -w);
                     g.strokeLine(0, w, 0, 2.5 * w);
                 }
-            }
-            
-            // Draw star or whatever extra treat.
-            if (extra) {
-                extra.draw();
-            }
-            
-            // Draw bonus.
-            if (bonus) {
-                g.drawGlassBall(0, 0, radius, '#000', 0.2);
-            }
-            
-            // Draw explosion.
-            if (explosion != null) {
-                explosion.draw();
             }
         }
     };
@@ -691,31 +711,33 @@ var Target = (function() {
         var dx = this.dx;
         var dy = this.dy;
         var dSqrd = sqrSegPoint(x0, y0, x1, y1, dx, dy);
-        if (dSqrd < this.dSqrd)
-            this.dSqrd = dSqrd;
+
         var maxRadius = shotRadius + this.radius;
         if (dSqrd <= maxRadius*maxRadius) {
-            // Slow the game for drama.
             if (!this.hit) {
                 this.hit = true;
                 hitsMade++;
-                if (this.bonus) {
-                    changeGold(targetBonus);
-                    if (this.bonus == 2)
-                        showTrajectory = 3;
-                    this.bonus = 0;
-                    push_multi_sound('bonus');
-                    gobs.push(new Bonus(dx, dy));
-                    this.extra = null;
-                }
+                totalTargetHit++;
+                hitRun++;
+                if (hitRun > longestHitRun)
+                    longestHitRun = hitRun;
             }
             var d = Math.sqrt(dSqrd);
             for (var i = 0; i < this.nRings; i++) {
                 if (this.rings[i].collide(i, this.ringWidth, d)) {
                     if (i == 0) {
                         eyesMade++;
+                        eyesTotal++;
+                        eyeRun++;
+                        if (eyeRun > longestEyeRun)
+                            longestEyeRun = eyeRun;
+                        if (eyeRun > 1) {
+                            var eyeRunBonus = (eyeRun - 1) * 25;
+                            goldThisTurn += eyeRunBonus;
+                            gobs.push(new Bonus(this.dx, this.dy - 29, eyeRunBonus, true));
+                        }
                         push_multi_sound('bullseye');
-                        this.explosion = new Explosion();
+                        gobs.push(new Explosion(this.dx, this.dy));
                     }
                 }
             }
@@ -725,24 +747,195 @@ var Target = (function() {
     return Target;
 })();
 
-var Star = (function() {
+var TargetBonus = (function() {
 
-    function Star(radius) {
+    function TargetBonus(dxi, dyi, radius, bonus) {
+        this.dx = dxi;
+        this.dy = dyi;
         this.radius = radius;
+        this.bonus = bonus;
+        this.hit = false;
+        this.extra = (bonus == 1) ? new BonusStar(this) : new BonusEyeSet(this);
+    }
+
+    TargetBonus.prototype.step = function() {
+        if (this.extra) {
+            this.extra.step();
+        }
+    };
+
+    TargetBonus.prototype.draw = function() {
+        with(this) {
+            if (hit)
+                return;
+            
+            var color = (bonus == 1) ? '#fc0' : '#0f4';
+
+            const minRadius = ringWidthAvg * 0.5;
+            
+            // Draw crosshairs.
+            if (radius < minRadius) {
+                const w = ringWidthAvg;
+                g.strokeStyle = color;
+                g.lineWidth = minRadius;
+                g.strokeLine(-w, 0, 2.5 * -w, 0);
+                g.strokeLine(w, 0, 2.5 * w, 0);
+                g.strokeLine(0, -w, 0, 2.5 * -w);
+                g.strokeLine(0, w, 0, 2.5 * w);
+            }
+            
+            // Draw star or whatever extra treat.
+            if (extra) {
+                extra.draw();
+            }
+            
+            // Draw bonus.
+            g.drawGlassBall(0, 0, radius, '#000', 0.2);
+        }
+    };
+
+    TargetBonus.prototype.collide = function(shot) {
+        if (!(shot instanceof Shot))
+            return;
+    
+        var x0 = shot.dxPrev;
+        var y0 = shot.dyPrev;
+        var x1 = shot.dx;
+        var y1 = shot.dy;
+        var dx = this.dx;
+        var dy = this.dy;
+        var dSqrd = sqrSegPoint(x0, y0, x1, y1, dx, dy);
+
+        var maxRadius = shotRadius + this.radius;
+        if (dSqrd <= maxRadius*maxRadius) {
+            // Slow the game for drama.
+            if (!this.hit) {
+                timeOfAnyHit = tms;
+                this.hit = true;
+                this.extra.pickup();
+                push_multi_sound('bonus');
+                this.extra = null;
+            }
+        }
+    };
+
+    return TargetBonus;
+})();
+
+var BonusStar = (function() {
+
+    function BonusStar(parent) {
+        this.parent = parent;
+        this.radius = parent.radius;
         this.ad = 0;
         this.av = 0.0005;
     }
     
-    Star.prototype.step = function() {
+    BonusStar.prototype.step = function() {
         this.ad += this.av * dms;
     };
     
-    Star.prototype.draw = function() {
+    BonusStar.prototype.draw = function() {
         g.fillStyle = '#fc0';
         g.fillStar(0, 0, this.radius, this.ad);
     };
+    
+    BonusStar.prototype.pickup = function() {
+        timeStarPower = tms;
+    };
 
-    return Star;
+    return BonusStar;
+})();
+
+var BonusEyeSet = (function() {
+
+    function BonusEyeSet(parent) {
+        this.parent = parent;
+        this.radius = parent.radius;
+        this.eyes = new Array();
+        const nEyes = 2;
+        for (var i = 0; i < nEyes; i++)
+            this.eyes.push(new BonusEye(this));
+    }
+    
+    BonusEyeSet.prototype.step = function() {
+        for (var i = this.eyes.length; i-- > 0; )
+            this.eyes[i].step();
+    };
+    
+    BonusEyeSet.prototype.draw = function() {
+        for (var i = this.eyes.length; i-- > 0; )
+            this.eyes[i].draw();
+    };
+    
+    BonusEyeSet.prototype.pickup = function() {
+        for (var i = this.eyes.length; i-- > 0; )
+            this.eyes[i].pickup();
+    };
+
+    return BonusEyeSet;
+})();
+
+var BonusEye = (function() {
+
+    function BonusEye(parent) {
+        this.parent = parent;
+        var radius = parent.radius;
+        this.smallR = radius * 0.075 + 0.5;
+        this.bigR = radius;
+        var rs = this.bigR - this.smallR;
+        do {
+            this.dx = rand() * radius * 2 - radius;
+            this.dy = rand() * radius * 2 - radius;
+        } while (sqr(this.dx, this.dy) >= rs * rs);
+        var mag = (1 + rand()) * 0.05 * (radius / 75);
+        var ang = rand() * Math.PI * 2;
+        this.vx = mag * Math.cos(ang);
+        this.vy = mag * Math.sin(ang);
+    }
+    
+    BonusEye.prototype.step = function() {
+        this.dx += this.vx * dms;
+        this.dy += this.vy * dms;
+        var rs = this.bigR - this.smallR;
+        var d = sqr(this.dx, this.dy);
+        if (d > rs * rs) {
+            // Bounce eye.
+            var h = Math.sqrt(d);
+            
+            // Move into circle.
+            this.dx = this.dx * rs / h;
+            this.dy = this.dy * rs / h;
+                        
+            // Reflect velocity.
+            var p = project(this.vx, this.vy, this.dx, this.dy);
+            this.vx -= p[0] * 2;
+            this.vy -= p[1] * 2;
+        }
+    };
+    
+    BonusEye.prototype.draw = function() {
+        g.fillStyle = '#000';
+        g.fillCircle(this.dx, this.dy, this.smallR);
+    };
+    
+    BonusEye.prototype.pickup = function() {
+        eyesMade++;
+        eyesTotal++;
+        eyeRun++;
+        if (eyeRun > longestEyeRun)
+            longestEyeRun = eyeRun;
+        var x = this.dx + this.parent.parent.dx;
+        var y = this.dy + this.parent.parent.dy;
+        gobs.push(new Explosion(x, y));
+        if (eyeRun > 1) {
+            var eyeRunBonus = (eyeRun - 1) * 25;
+            goldThisTurn += eyeRunBonus;
+            gobs.push(new Bonus(x, y - 29, eyeRunBonus, true));
+        }
+    };
+
+    return BonusEye;
 })();
 
 var Ring = (function() {
@@ -773,7 +966,9 @@ var Ring = (function() {
             if (d - shotRadius <= (number + 0.25) * ringWidth) {
                 this.timeHit = tms;
                 timeOfAnyHit = tms;
-                goldThisTurn += computeRingGold(number, undefined);
+                var loot = computeRingGold(number, undefined);
+                goldThisTurn += loot;
+                gobs.push(new Bonus(theShot.dx, theShot.dy, loot, false));
                 return true;
             }
         }
@@ -783,9 +978,9 @@ var Ring = (function() {
     function computeRingGold(i, nRings) {
         
         switch (i) {
-            case 0: return 90;
-            case 1: return 55;
-            default: return 35;
+            case 0: return 75;
+            case 1: return 50;
+            default: return 25;
         }
         
         // :)
@@ -811,22 +1006,17 @@ var Explosion = (function() {
 
     const lifetime = 2500;
 
-    function Explosion() {
+    function Explosion(dx, dy) {
+        this.dx = dx;
+        this.dy = dy;
         this.timeStart = tms;
         this.worms = new Array();
         var angle = rand() * Math.PI * 2;
-        var nWorms = 5;
+        const nWorms = 5;
         for (var i = nWorms; i-- > 0; ) {
             this.worms.push(new Worm(angle));
             angle += Math.PI * 2 / nWorms;
         }
-    }
-    
-    Explosion.prototype.draw = function() {
-        if (tms - this.timeStart > lifetime)
-            return;
-        for (var i = this.worms.length; i-- > 0; )
-            this.worms[i].draw();
     }
     
     Explosion.prototype.step = function() {
@@ -834,6 +1024,41 @@ var Explosion = (function() {
             return;
         for (var i = this.worms.length; i-- > 0; )
             this.worms[i].step();
+    }
+    
+    Explosion.prototype.draw = function() {
+        var age = tms - this.timeStart;
+        if (age > lifetime)
+            return;
+
+        // Draw ring of smoke.
+        if (false && age) {
+            var ringRadius = age * 0.13;
+            var width = 30;
+            if (width * 0.5 >= ringRadius)
+                width = ringRadius * 2;
+            var start = ringRadius - width * 0.5;
+            var finish = ringRadius + width * 0.5;
+            var grad = g.createRadialGradient(0, 0, start, 0, 0, finish);
+            var alpha = 1 / (1 + age * 0.005);
+            grad.addColorStop(0.0, 'rgba(0, 0, 0, '+(alpha*0.0)+')');
+            grad.addColorStop(0.1, 'rgba(0, 0, 0, '+(alpha*0.04)+')');
+            grad.addColorStop(0.3, 'rgba(0, 0, 0, '+(alpha*0.1)+')');
+            grad.addColorStop(0.5, 'rgba(0, 0, 0, '+(alpha*0.4)+')');
+            grad.addColorStop(0.7, 'rgba(0, 0, 0, '+(alpha*0.1)+')');
+            grad.addColorStop(0.9, 'rgba(0, 0, 0, '+(alpha*0.04)+')');
+            grad.addColorStop(1.0, 'rgba(0, 0, 0, '+(alpha*0.0)+')');
+            g.strokeStyle = grad;
+            g.lineWidth = width;
+            g.strokeCircle(0, 0, ringRadius);
+        }
+
+        // Draw worms.
+        for (var i = this.worms.length; i-- > 0; )
+            this.worms[i].draw();
+    }
+    
+    Explosion.prototype.collide = function(shot) {
     }
 
     return Explosion;
@@ -853,10 +1078,7 @@ var Worm = (function() {
         this.ang1da = rand() * Math.PI * 2;
         this.ang1va = rand() * Math.PI * 0.017;
         this.ang1r = rand() * 0.4;
-        var cr = randInt(256);
-        var cg = randInt(256);
-        var cb = randInt(256);
-        this.color = 'rgb('+cr+', '+cg+', '+cb+')';
+        this.color = randHue();
         this.points = new Array();
         this.points.push(new Point(this.dx, this.dy));
         this.sparks = new Array();
@@ -950,10 +1172,12 @@ var Spark = (function() {
 
 var Bonus = (function() {
 
-    function Bonus(dxi, dyi) {
+    function Bonus(dxi, dyi, amount, isSpecial) {
         this.dx = dxi;
         this.dy = dyi;
         this.timeBonusGiven = tms;
+        this.amount = amount;
+        this.isSpecial = isSpecial;
     }
 
     Bonus.prototype.step = function() {
@@ -966,7 +1190,6 @@ var Bonus = (function() {
             const fadeTime = 2000.0;
             const opaqueTime = totalTime - fadeTime;
             if (dt < totalTime) {
-                setFont(18);
                 var alpha;
                 if (dt > opaqueTime)
                     alpha = 1.0 - ((dt-opaqueTime) / fadeTime);
@@ -978,12 +1201,20 @@ var Bonus = (function() {
                 else
                     oy = 1.0;
                 g.textAlign = 'center';
-                g.lineWidth = 6;
-                g.lineJoin = 'round';
-                g.fillStyle = 'rgba(0, 255, 0, '+alpha+')';
-                g.strokeStyle = 'rgba(0, 0, 0, '+alpha+')';
-                g.strokeText('+'+targetBonus, 0, -12 - oy * 22);
-                g.fillText('+'+targetBonus, 0, -12 - oy * 22);
+                if (isSpecial) {
+                    setFont(18);
+                    g.lineWidth = 6;
+                    g.lineJoin = 'round';
+                    g.fillStyle = 'rgba(0, 255, 0, '+alpha+')';
+                    g.strokeStyle = 'rgba(0, 0, 0, '+alpha+')';
+                    g.strokeText('+'+this.amount, 0, -12 - oy * 22);
+                    g.fillText('+'+this.amount, 0, -12 - oy * 22);
+                }
+                else {
+                    setFont(12);
+                    g.fillStyle = 'rgba(0, 0, 0, '+alpha+')';
+                    g.fillText('+'+this.amount, 0, -12 - oy * 22);
+                }
                 g.textAlign = 'left';
             }
         }
@@ -1167,12 +1398,12 @@ var Trajectory = (function() {
     };
 
     Trajectory.prototype.draw = function() {
+        if (false == (timeStarPower && (tms - timeStarPower < msPerStarPower)))
+            return;
         this.dx = cannon.dx;
         this.dy = cannon.dy;
-        var fuelNoise = (100.0 / fuelSteps) * noise * (rand() - 0.5);
-        var power = (cannon.fuel + fuelNoise) * fuelPower;
-        var angleNoise = (Math.PI / angleSteps) * noise * (rand() - 0.5);
-        var angle = (cannon.angle + angleNoise);
+        var power = fuelToPower(cannon.fuel);
+        var angle = cannon.angle;
         this.vx = power * Math.cos(angle);
         this.vy = power * Math.sin(angle);
         this.vyPrev = 0;
@@ -1186,18 +1417,30 @@ var Trajectory = (function() {
             dms = 20;
             var drawDash = true;
             var iters = 0;
+            var distTraveled = 0;
+            var ddx, ddy;
+            var distLimit = ((tms - timeStarPower) / msPerStarPower);
+            distLimit = Math.pow(distLimit, 0.2);
+            distLimit = 1 - distLimit;
+            distLimit *= 3000;
+            distLimit += 70
             while (true) {
                 vyPrev = vy;
                 vy += gravity * dms;
-                dx += vx * dms;
-                dy += (vy + vyPrev) * 0.5 * dms;
+                ddx = vx * dms;
+                ddy = (vy + vyPrev) * 0.5 * dms;
+                dx += ddx;
+                dy += ddy;
                 if (drawDash)
                     g.lineTo(dx, dy);
                 else
                     g.moveTo(dx, dy);
                 drawDash = !drawDash;
+                distTraveled += mag(ddx, ddy);
                 
                 // Check bounds - end of shot conditions.
+                if (distTraveled > distLimit)
+                    break;
                 const edgeLimit = 20;
                 if (dx < -shotRadius - edgeLimit)
                     break;
@@ -1235,6 +1478,21 @@ var LayerScore = (function() {
         this.gold = goldThisTurn;
         this.net  = this.shot + this.fuel + this.gold;
         this.timeCreated = time();
+
+        // Update shots.
+        if (false && shots % shotsPerBonus == 0) {
+            changeGold(shotsBonus);
+            timeShotsBonusGiven = tms;
+            push_multi_sound('bonus');
+        }
+        if (shots == 10) {
+            shot10Gold = gold + this.gold;
+            shot10Time = time() - timeGameStart;
+        }
+        if (shots == 100) {
+            shot100Gold = gold + this.gold;
+            shot100Time = time() - timeGameStart;
+        }
     }
 
     function showSign(n) {
@@ -1252,7 +1510,7 @@ var LayerScore = (function() {
         
         // Background.
         g.fillStyle = 'rgba(255, 255, 255, 0.7)';
-        g.strokeStyle = '#fc0';
+        g.strokeStyle = '#eb0';
         g.lineWidth = 12;
         g.fillRect(x, y, w, h, 15);
         g.strokeRoundRect(x, y, w, h, 15);
@@ -1303,12 +1561,16 @@ var LayerScore = (function() {
         g.textAlign = 'left';
     };
 
-    LayerScore.prototype.onKeyDown = function(k) {
+    LayerScore.prototype.onKeyPress = function(k) {
         if (time() - this.timeCreated < 200)
             return false;
         switch(k) {
         case KeyEvent.DOM_VK_SPACE: finishScore(this); return true;
         }
+        return false;
+    };
+
+    LayerScore.prototype.onKeyRelease = function(k) {
         return false;
     };
 
@@ -1320,24 +1582,14 @@ function finishScore(layer) {
     
     changeGold(layer.net);
     
-    totalShotFired++;
     totalFuelUsed += cannon.fuel;
     totalGoldWon += layer.gold;
-    totalTargetHit += hitsMade;
     
-    if (hitsMade)
-        hitRun++;
-    else
+    if (!hitsMade)
         hitRun = 0;
-    if (hitRun > longestHitRun)
-        longestHitRun = hitRun;
     
-    if (eyesMade)
-        eyeRun++;
-    else
+    if (!eyesMade)
         eyeRun = 0;
-    if (eyeRun > longestEyeRun)
-        longestEyeRun = eyeRun;
     
     if (numTargets == 3) {
         if (hitsMade > mostHitsOf3)
@@ -1354,10 +1606,7 @@ function finishScore(layer) {
     }
     
     if (gold > 0) {
-        if (layer.gold == 0)
-            retryLevel();
-        else
-            nextLevel();
+        nextShot();
     }
     else {
         gameOver();
@@ -1371,9 +1620,12 @@ function gameOver() {
 var LayerGameOver = (function() {
 
     function LayerGameOver() {
-        this.gameTime = msToString(time() - timeGameStart);
+        this.gameTime = time() - timeGameStart;
         this.timeCreated = time();
-        highestLevel = level;
+        mostShots = shots;
+        
+        // Create score from game.
+        addGameScore();
     }
 
     LayerGameOver.prototype.step = function() {
@@ -1402,30 +1654,38 @@ var LayerGameOver = (function() {
         setFont(22);
         g.fillText('Game Over', x + w / 2, y + 37);
         setFont(12);
-        g.fillText('Time Played: '+this.gameTime, x + w / 2, y + 60);
+        g.fillText('Time Played: '+msToString(this.gameTime), x + w / 2, y + 60);
+        setFont(12);
+        g.fillText('Bullseyes: '+eyesTotal, x + w / 2, y + 80);
+        setFont(12);
+        g.fillText('Gold won: '+totalGoldWon, x + w / 2, y + 100);
         
-        // Level.
+        // Eyes.
         setFont(28);
         ox = x + w / 2; oy = y + h / 2 + 5;
         g.strokeStyle = '#000';
         g.lineWidth = 5;
         g.lineJoin = 'round';
         g.fillStyle = '#07f';
-        var exMarks = fill('!', level / 45);
-        g.strokeText('Achieved', ox, oy);
-        g.strokeText('Level '+level+exMarks, ox, oy + 50);
-        g.fillText('Achieved', ox, oy);
-        g.fillText('Level '+level+exMarks, ox, oy + 50);
+        var msg = shots+' Shots'+fill('!', eyesTotal / 45);
+        g.strokeText('Achieved', ox, oy+30);
+        g.fillText('Achieved', ox, oy+30);
+        g.strokeText(msg, ox, oy+72);
+        g.fillText(msg, ox, oy+72);
         
         g.textAlign = 'left';
     };
 
-    LayerGameOver.prototype.onKeyDown = function(k) {
+    LayerGameOver.prototype.onKeyPress = function(k) {
         if (time() - this.timeCreated < 200)
             return false;
         switch(k) {
         case KeyEvent.DOM_VK_SPACE: finishGameOver(this); return true;
         }
+        return false;
+    };
+
+    LayerGameOver.prototype.onKeyRelease = function(k) {
         return false;
     };
 
@@ -1436,4 +1696,3 @@ function finishGameOver(layer) {
     layers.remove(layer);
     newGame();
 }
-
