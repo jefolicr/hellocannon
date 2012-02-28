@@ -9,6 +9,8 @@ const showAchievements = false;
 const alwaysHaveTrajectory = false;
 const alwaysHaveSink = false;
 const alwaysHaveBonus = false;
+const useNewEyeScoring = false;
+const qaLevels = true;
 
 // UI.
 var canvas;
@@ -37,12 +39,14 @@ const targetMinY = 10 + barHeight;
 const targetMaxY = canvasH - 10;
 
 // Mechanics.
-const gravity = 0.000336;
-const angleSteps = 125;
+const physics = 0.8;
+const gravity = 0.000336 * physics * physics;
+const angleSteps = 127;
 const fuelSteps = 20;
 const shotCost = 50;
-const slowFactor = 0.25;
-const msPerStarPower = 20000;
+const slowFactor = 0.2;
+const starPowerTurns = 3;
+const eyePowerAmount = 4;
 
 // State.
 var tms; // total ms time
@@ -55,13 +59,16 @@ var totalTargetHit;
 var totalGoldWon;
 var cannon;
 var trajectory;
-var theShot
+var theShot;
+var fuelCost;
 var gobs;
+var perms;
+var isCannonFocused;
 var isCannonFired;
 var timeOfAnyHit;
 var timeGameStart;
 var timeTurnStart;
-var timeStarPower;
+var starPower;
 var hitRun;
 var eyeRun;
 var hitsMade;
@@ -145,17 +152,23 @@ function setFont(size) {
 
 function onKeyPress(e) {
     var k = e.keyCode;
-    for (var i = 0; i < layers.length; i++) {
-        if (layers[i].onKeyPress(k))
+    for (var i = layers.length; --i >= 0; ) {
+        if (layers[i].onKeyPress(k)) {
+            e.stopPropagation();
+            e.preventDefault();
             break;
+        }
     }
 }
 
 function onKeyRelease(e) {
     var k = e.keyCode;
     for (var i = 0; i < layers.length; i++) {
-        if (layers[i].onKeyRelease(k))
+        if (layers[i].onKeyRelease(k)) {
+            e.stopPropagation();
+            e.preventDefault();
             break;
+        }
     }
 }
 
@@ -170,7 +183,7 @@ function animate(stepRoutine, targetMspf) {
 function nextFrame() {
     if (stepLastTime == undefined) {
         stepLastTime = time();
-        _dms = 0
+        _dms = 0;
     }
     else {
         var currTime = time();
@@ -204,8 +217,10 @@ function step(ms) {
 }
 
 function newGame() {
+    perms = [];
     shots = 0;
-    gold = 250
+    gold = 250;
+    isCannonFocused = false;
     totalFuelUsed = 0;
     totalTargetHit = 0;
     totalGoldWon = 0;
@@ -217,7 +232,7 @@ function newGame() {
     cannon.angleStep = Math.floor(angleSteps / 2);
     timeGameStart = time();
     progress = (timeGameStart & 0xffffffff);
-    timeStarPower = 0;
+    starPower = 0;
     hitRun = 0;
     eyeRun = 0;
     eyesTotal = 0;
@@ -238,6 +253,7 @@ function newGame() {
 
 function nextShot() {
     turnOver = false;
+    isCannonFocused = true;
     isCannonFired = false;
     goldThisTurn = 0;
     gobs = [];
@@ -246,31 +262,39 @@ function nextShot() {
     numSinks = alwaysHaveSink ? 1 : 0;
     numTargets = 1;
     numTargetBonuses = alwaysHaveBonus ? 1 : 0;
-    if (shots) {
-        if (shots >= 10 && rand() < 0.142857)
-            numSinks = (shots >= 30 && rand() < 0.142857) ? 2 : 1;
-        if (shots >= 5 && rand() < 0.142857)
-            numTargets = (shots >= 20 && rand() < 0.142857) ? 10 : 3;
-        if (shots >= 10 && rand() < 0.05)
-            numTargetBonuses = 1;
-    }
+    if (shots >= 10 && rand() < 0.166667)
+        numSinks = (shots >= 30 && rand() < 0.166667) ? 2 : 1;
+    if (shots >= 5 && rand() < 0.166667)
+        numTargets = (shots >= 20 && rand() < 0.166667) ? 10 : 3;
+    if (shots >= 10 && rand() < 0.055556)
+        numTargetBonuses = 1;
     if (alwaysHaveTrajectory)
-        timeStarPower = tms;
-    for (var i = 0; i < numSinks; i++)
-        (rand() < 0.142857) ? numTargetBonuses++ : numTargets++;
+        starPower = 1;
+    for (var i = 0; i < numSinks; i++) {
+        numTargets++;
+        if (rand() < 0.166667)
+            numTargetBonuses++;
+    }
     for (var i = 0; i < numTargets; i++)
         gobs.push(newTarget());
     for (var i = 0; i < numTargetBonuses; i++)
         gobs.push(newTargetBonus());
-    if (timeStarPower && (tms - timeStarPower < msPerStarPower))
-        gobs.push(trajectory);
     for (var i = 0; i < numSinks; i++)
         gobs.push(newSink());
+    gobs.push(trajectory);
     gobs.push(cannon);
     hitsMade = 0;
     eyesMade = 0;
     timeTurnStart = tms;
     updateAchievements();
+    var livePerms = [];
+    for (var i = 0; i < perms.length; i++) {
+        if (!perms[i].hit) {
+            livePerms.push(perms[i]);
+            gobs.push(perms[i]);
+        }
+    }
+    perms = livePerms;
 }
 
 function newSink() {
@@ -285,27 +309,32 @@ function newTarget() {
     var nRings;
     var ringWidth = ringWidthAvg;
          if (shots <  5)  { nRings = 4; ringWidth *= 7.0; }
-    else if (shots < 10)  { nRings = 4; ringWidth *= 3.5; }
-    else if (shots < 20)  { nRings = 4; ringWidth *= 2.5; }
-    else if (shots < 30)  { nRings = 3; ringWidth *= 2.5; }
-    else if (shots < 40)  { nRings = 3; ringWidth *= 2.0; }
-    else if (shots < 50)  { nRings = 3; ringWidth *= 1.8; }
-    else if (shots < 60)  { nRings = 3; ringWidth *= 1.6; }
-    else if (shots < 70)  { nRings = 2 + randInt(2); ringWidth *= 1.5; }
-    else if (shots < 80)  { nRings = 2; ringWidth *= 1.3; }
-    else if (shots < 90)  { nRings = 2; ringWidth *= 1.15; }
-    else if (shots < 100) { nRings = 1 + randInt(2); ringWidth *= 1.0; }
+    else if (shots < 10)  { nRings = 4; ringWidth *= 5.0; }
+    else if (shots < 20)  { nRings = 4; ringWidth *= 3.0; }
+    else if (shots < 30)  { nRings = 3; ringWidth *= 3.0; }
+    else if (shots < 40)  { nRings = 3; ringWidth *= 2.5; }
+    else if (shots < 50)  { nRings = 3; ringWidth *= 2.0; }
+    else if (shots < 60)  { nRings = 3; ringWidth *= 1.75; }
+    else if (shots < 70)  { nRings = 2; ringWidth *= 1.5; }
+    else if (shots < 80)  { nRings = 2; ringWidth *= 1.25; }
+    else if (shots < 90)  { nRings = 2; ringWidth *= 1.125; }
+    else if (shots < 100) { nRings = 2; ringWidth *= 1.0; }
     else                  { nRings = 1; ringWidth *= 0.9; }
     return new Target(x, y, nRings, ringWidth);
 }
 
 function newTargetBonus() {
-    var newt = newTarget();
-    var x = newt.dx;
-    var y = newt.dy;
-    var r = newt.radius + 4;
+    var x = targetMinX + randInt(targetMaxX - targetMinX);
+    var y = targetMinY + randInt(targetMaxY - targetMinY);
+    var r = newTarget().radius + 4;
     var bonus = (rand() < 0.5) ? 1 : 0;
     return new TargetBonus(x, y, r, bonus);
+}
+
+function newPermBonus() {
+    var x = targetMinX + randInt(targetMaxX - targetMinX);
+    var y = targetMinY + randInt(targetMaxY - targetMinY);
+    return new PermBonus(x, y);
 }
 
 var LayerGame = (function() {
@@ -315,15 +344,13 @@ var LayerGame = (function() {
     
     LayerGame.prototype.step = function() {
         // If turn is just beginning.
-        if (tms - timeTurnStart < 200 || isCannonFired) {
-            this.initialPauseOff = false;
+        if (tms - timeTurnStart < 200) {
             this.timeKeyPressLeft = undefined;
             this.timeKeyPressRight = undefined;
             this.timeKeyPressUp = undefined;
             this.timeKeyPressDown = undefined;
         }
         else {
-            this.initialPauseOff = true;
             const pauseBefore = 500;
             if (this.timeKeyPressUp && tms - this.timeKeyPressUp > pauseBefore) {
                 changeAngle(2);
@@ -344,8 +371,10 @@ var LayerGame = (function() {
         }
         
         // Step game objects.
-        for (var i = 0; i < gobs.length; i++)
-            gobs[i].step();
+        for (var i = 0; i < gobs.length; i++) {
+            if (typeof gobs[i].step == 'function')
+                gobs[i].step();
+        }
             
         // Draw background.
         g.fillStyle = '#eee';
@@ -357,15 +386,6 @@ var LayerGame = (function() {
             g.save();
             x = gobs[i].dx;
             y = gobs[i].dy;
-            // XXX Occasionally x and y are undefined for some unknown reason.
-            if (false && (x == undefined || y == undefined)) {
-                console.log('Found undefined x/y pair: '+x+','+y);
-                console.log('All gobs: ');
-                console.log(gobs);
-                console.log('numTargets='+numTargets);
-                console.log('Looking at '+i+' of '+gobs.length+': ');
-                console.log(gobs[i]);
-            }
             g.translate(x, y);
             gobs[i].draw();
             g.restore();
@@ -392,15 +412,11 @@ var LayerGame = (function() {
         }
         
         // Draw star power.
-        if (timeStarPower && tms - timeStarPower < msPerStarPower) {
+        if (starPower) {
             g.save();
             g.translate(200, 15);
             g.fillStyle = '#000';
-            g.beginPath();
-            var f = 1 - (tms - timeStarPower) / msPerStarPower;
-            g.arc(0, 0, 12, 0, Math.PI * 2 * f, false);
-            g.lineTo(0, 0);
-            g.fill();
+            g.fillCircle(0, 0, 12);
             g.fillStyle = '#fc0';
             g.fillStar(0, 0, 12, 0);
             g.restore();
@@ -422,8 +438,6 @@ var LayerGame = (function() {
     };
 
     LayerGame.prototype.onKeyPress = function(k) {
-        if (!this.initialPauseOff)
-            return false;
         switch(k) {
         case KeyEvent.DOM_VK_UP:    if (!this.timeKeyPressUp) {    changeAngle(1);  this.timeKeyPressUp = tms; }    return true;
         case KeyEvent.DOM_VK_DOWN:  if (!this.timeKeyPressDown) {  changeAngle(-1); this.timeKeyPressDown = tms; }  return true;
@@ -435,8 +449,6 @@ var LayerGame = (function() {
     };
 
     LayerGame.prototype.onKeyRelease = function(k) {
-        if (!this.initialPauseOff)
-            return false;
         switch(k) {
         case KeyEvent.DOM_VK_UP:    this.timeKeyPressUp = undefined; return true;
         case KeyEvent.DOM_VK_DOWN:  this.timeKeyPressDown = undefined; return true;
@@ -450,6 +462,8 @@ var LayerGame = (function() {
 })();
 
 function changeAngle(n) {
+    if (!isCannonFocused)
+        return;
     var prev = cannon.angleStep;
     var next = prev;
     next += n;
@@ -466,6 +480,8 @@ function changeAngle(n) {
 }
 
 function changeFuel(n) {
+    if (!isCannonFocused)
+        return;
     var prev = cannon.fuelStep;
     var next = prev;
     next += n;
@@ -479,24 +495,33 @@ function changeFuel(n) {
 }
 
 function fuelToPower(fuel) {
-    // return fuel * 0.0064;
-    return 0.042 + Math.pow(fuel, 0.9) * 0.009;
+    // Power ranges from 0.05 to 0.60
+    return (0.05 + Math.pow(fuel, 0.9) * 0.008717) * physics;
 }
 
 function fireCannon() {
-    if (!alwaysHaveTrajectory)
-        gobs.remove(trajectory);
-    shots++;
+    if (qaLevels) {
+        nextShot();
+        shots++;
+        return;
+    }
+    if (isCannonFired)
+        return;
     isCannonFired = true;
+    if (starPower)
+        starPower--;
+    shots++;
     var dx = cannon.dx;
     var dy = cannon.dy;
+    fuelCost = cannon.fuel;
     var power = fuelToPower(cannon.fuel);
     var angle = cannon.angle;
     var vx = power * Math.cos(angle);
     var vy = power * Math.sin(angle);
     // Put shot before cannon and after targets.
     theShot = new Shot(dx, dy, vx, vy);
-    gobs[gobs.length - 1] = theShot;
+    gobs.remove(cannon);
+    gobs.push(theShot);
     gobs.push(cannon);
     push_multi_sound('firecannon');
 }
@@ -531,9 +556,6 @@ var Cannon = (function() {
         this.dy = dyi;
     }
 
-    Cannon.prototype.step = function() {
-    };
-
     Cannon.prototype.draw = function() {
         
         // Draw cannon.
@@ -562,9 +584,6 @@ var Cannon = (function() {
         g.fillStyle = '#000';
         setFont(10);
         g.fillText(cannon.fuel, 0, 12);
-    };
-
-    Cannon.prototype.collide = function(shot) {
     };
 
     return Cannon;
@@ -621,7 +640,8 @@ var Shot = (function() {
                     
             // Collide with all game objects.
             for (var i = 0; i < gobs.length; i++) {
-                gobs[i].collide(this);
+                if (typeof gobs[i].collide == 'function')
+                    gobs[i].collide(this);
             }
         }
     };
@@ -652,9 +672,6 @@ var Shot = (function() {
         }
     };
 
-    Shot.prototype.collide = function(shot) {
-    };
-
     return Shot;
 })();
 
@@ -672,9 +689,6 @@ var Target = (function() {
             rings.push(new Ring());
         this.rings = rings;
     }
-
-    Target.prototype.step = function() {
-    };
 
     Target.prototype.draw = function() {
         with(this) {
@@ -726,18 +740,8 @@ var Target = (function() {
             for (var i = 0; i < this.nRings; i++) {
                 if (this.rings[i].collide(i, this.ringWidth, d)) {
                     if (i == 0) {
-                        eyesMade++;
-                        eyesTotal++;
-                        eyeRun++;
-                        if (eyeRun > longestEyeRun)
-                            longestEyeRun = eyeRun;
-                        if (eyeRun > 1) {
-                            var eyeRunBonus = (eyeRun - 1) * 25;
-                            goldThisTurn += eyeRunBonus;
-                            gobs.push(new Bonus(this.dx, this.dy - 29, eyeRunBonus, true));
-                        }
+                        eyeHitMade(this.dx, this.dy);
                         push_multi_sound('bullseye');
-                        gobs.push(new Explosion(this.dx, this.dy));
                     }
                 }
             }
@@ -746,6 +750,25 @@ var Target = (function() {
 
     return Target;
 })();
+
+function eyeHitMade(x, y) {
+    eyesMade++;
+    eyesTotal++;
+    eyeRun++;
+    if (eyeRun > longestEyeRun)
+        longestEyeRun = eyeRun;
+    if (useNewEyeScoring) {
+        gobs.push(new Explosion(x, y, eyeRun));
+    }
+    else {
+        if (eyeRun > 1) {
+            var eyeRunBonus = (eyeRun - 1) * 25;
+            goldThisTurn += eyeRunBonus;
+            gobs.push(new Bonus(x, y - 29, eyeRunBonus, true));
+        }
+        gobs.push(new Explosion(x, y, 5));
+    }
+}
 
 var TargetBonus = (function() {
 
@@ -841,7 +864,7 @@ var BonusStar = (function() {
     };
     
     BonusStar.prototype.pickup = function() {
-        timeStarPower = tms;
+        starPower += starPowerTurns;
     };
 
     return BonusStar;
@@ -853,8 +876,7 @@ var BonusEyeSet = (function() {
         this.parent = parent;
         this.radius = parent.radius;
         this.eyes = new Array();
-        const nEyes = 2;
-        for (var i = 0; i < nEyes; i++)
+        for (var i = 0; i < eyePowerAmount; i++)
             this.eyes.push(new BonusEye(this));
     }
     
@@ -920,19 +942,9 @@ var BonusEye = (function() {
     };
     
     BonusEye.prototype.pickup = function() {
-        eyesMade++;
-        eyesTotal++;
-        eyeRun++;
-        if (eyeRun > longestEyeRun)
-            longestEyeRun = eyeRun;
         var x = this.dx + this.parent.parent.dx;
         var y = this.dy + this.parent.parent.dy;
-        gobs.push(new Explosion(x, y));
-        if (eyeRun > 1) {
-            var eyeRunBonus = (eyeRun - 1) * 25;
-            goldThisTurn += eyeRunBonus;
-            gobs.push(new Bonus(x, y - 29, eyeRunBonus, true));
-        }
+        eyeHitMade(x, y);
     };
 
     return BonusEye;
@@ -976,60 +988,40 @@ var Ring = (function() {
     }
 
     function computeRingGold(i, nRings) {
-        
-        switch (i) {
-            case 0: return 75;
-            case 1: return 50;
-            default: return 25;
-        }
-        
-        // :)
-        return i?!~-i?65:40:90;
+        return i?~-i?25:50:75;//:)
     }
 
     return Ring;
 })();
 
 function isFallenFromVision(gob, safetyMargin) {
-    var x = gob.dx;
-    var y = gob.dy;
-    if (x < -safetyMargin)
-        return true;
-    if (canvasW + safetyMargin < x)
-        return true;
-    if (canvasH + safetyMargin < y)
-        return true;
-    return false;
+    return (gob.dx < -safetyMargin)
+        || (canvasW + safetyMargin < gob.dx)
+        || (canvasH + safetyMargin < gob.dy);
 }
 
 var Explosion = (function() {
 
-    const lifetime = 2500;
-
-    function Explosion(dx, dy) {
+    function Explosion(dx, dy, streamers) {
         this.dx = dx;
         this.dy = dy;
         this.timeStart = tms;
-        this.worms = new Array();
         var angle = rand() * Math.PI * 2;
-        const nWorms = 5;
-        for (var i = nWorms; i-- > 0; ) {
-            this.worms.push(new Worm(angle));
-            angle += Math.PI * 2 / nWorms;
+        for (var i = streamers; i-- > 0; ) {
+            gobs.push(new Streamer(dx, dy, angle));
+            angle += Math.PI * 2 / streamers;
         }
-    }
-    
-    Explosion.prototype.step = function() {
-        if (tms - this.timeStart > lifetime)
-            return;
-        for (var i = this.worms.length; i-- > 0; )
-            this.worms[i].step();
+        if (useNewEyeScoring) {
+            for (var i = 0; i < streamers; i++) {
+                var perm = newPermBonus();
+                perms.push(perm);
+                gobs.push(perm);
+            }
+        }
     }
     
     Explosion.prototype.draw = function() {
         var age = tms - this.timeStart;
-        if (age > lifetime)
-            return;
 
         // Draw ring of smoke.
         if (false && age) {
@@ -1052,39 +1044,37 @@ var Explosion = (function() {
             g.lineWidth = width;
             g.strokeCircle(0, 0, ringRadius);
         }
-
-        // Draw worms.
-        for (var i = this.worms.length; i-- > 0; )
-            this.worms[i].draw();
-    }
-    
-    Explosion.prototype.collide = function(shot) {
     }
 
     return Explosion;
 })();
 
-var Worm = (function() {
+var Streamer = (function() {
     
-    const wormLength = 10;
+    const streamerWidth = 6;
+    const streamerLength = 13;
     
-    function Worm(angle) {
-        this.dx = 0;
-        this.dy = 0;
-        var mag = (1 + rand()) * 0.12;
+    function Streamer(dx, dy, angle) {
+        this.dx = dx;
+        this.dy = dy;
+        var mag = (1 + rand()) * 0.12 * physics;
         var ang = angle;
         this.vx = mag * Math.cos(ang);
         this.vy = mag * Math.sin(ang);
         this.ang1da = rand() * Math.PI * 2;
-        this.ang1va = rand() * Math.PI * 0.017;
+        this.ang1va = (rand() - 0.5) * Math.PI * 0.034;
         this.ang1r = rand() * 0.4;
         this.color = randHue();
         this.points = new Array();
         this.points.push(new Point(this.dx, this.dy));
-        this.sparks = new Array();
+        this.dead = false;
     }
     
-    Worm.prototype.step = function() {
+    Streamer.prototype.step = function() {
+        if (this.dead)
+            return;
+        
+        // Step streamer.
         var vyPrev = this.vy;
         this.vy += gravity * dms;
         this.dx += this.vx * dms;
@@ -1092,54 +1082,59 @@ var Worm = (function() {
         this.ang1da += this.ang1va * dms;
         this.dx += this.ang1r * Math.cos(this.ang1da) * dms;
         this.dy += this.ang1r * Math.sin(this.ang1da) * dms;
-        if (this.points.length >= wormLength)
+        if (this.points.length >= streamerLength)
             this.points.shift();
         this.points.push(new Point(this.dx, this.dy));
         
+        // Check bounds - death conditions.
+        const edgeLimit = 30;
+        dead = isFallenFromVision(this, 30);
+        
         // Step sparks.
-        if (rand() < 0.7)
-            this.sparks.push(new Spark(this.dx, this.dy, this.color));
-        for (var i = this.sparks.length; i-- > 0; ) {
-            this.sparks[i].step();
-        }
+        if (rand() < 0.65)
+            gobs.push(new Spark(this.dx, this.dy, this.color));
     }
     
-    Worm.prototype.draw = function() {
+    Streamer.prototype.draw = function() {
+        if (this.dead)
+            return;
+        
+        // Draw streamer.
+        g.save();
+        g.translate(-this.dx, -this.dy);
         var prev = this.points[0];
         var next;
         var len = this.points.length;
-        const w = 4.2;
         if (len > 1) {
-            g.lineWidth = w;
+            g.lineCap = "round";
+            g.lineWidth = streamerWidth;
             var rgbHead = new RGBColor(this.color);
             var rgbTail = new RGBColor('#fff');
             var rgbNext;
             var alpha;
             for (var i = 1; i < len; i++) {
                 next = this.points[i];
-                alpha = 1 - ((len - i) / wormLength);
+                alpha = 1 - ((len - i) / streamerLength);
                 rgbNext = rgbHead.linear(rgbTail, 1 - alpha);
                 g.strokeStyle = 'rgba('+rgbNext.r+', '+rgbNext.g+', '+rgbNext.b+', '+alpha+')';
                 g.strokeLine(prev.x, prev.y, next.x, next.y);
                 prev = next;
             }
         }
-        
-        // Draw sparks.
-        for (var i = this.sparks.length; i-- > 0; ) {
-            this.sparks[i].draw();
-        }
+        g.restore();
     }
     
-    return Worm;
+    return Streamer;
 })();
 
 var Spark = (function() {
+
+    const sparkRadius = 1.5;
     
     function Spark(x, y, color) {
         this.dx = x;
         this.dy = y;
-        var mag = (1 + rand()) * 0.045;
+        var mag = (1 + rand()) * 0.045 * physics;
         var ang = rand() * Math.PI * 2;
         this.vx = mag * Math.cos(ang);
         this.vy = mag * Math.sin(ang);
@@ -1160,7 +1155,7 @@ var Spark = (function() {
         var alpha = 1 - ((tms - this.timeCreated) / 1500);
         if (alpha > 0.1) {
             g.fillStyle = 'rgba('+rgb.r+', '+rgb.g+', '+rgb.b+', '+alpha+')';
-            g.fillCircle(this.dx, this.dy, 1.2);
+            g.fillCircle(0, 0, sparkRadius);
         }
         if (alpha < 0) {
             this.alive = false;
@@ -1179,9 +1174,6 @@ var Bonus = (function() {
         this.amount = amount;
         this.isSpecial = isSpecial;
     }
-
-    Bonus.prototype.step = function() {
-    };
 
     Bonus.prototype.draw = function() {
         with(this) {
@@ -1220,15 +1212,12 @@ var Bonus = (function() {
         }
     };
 
-    Bonus.prototype.collide = function(shot) {
-    };
-
     return Bonus;
 })();
 
 function trimSparks(sparks) {
     var newA = new Array();
-    for (var i in sparks) {
+    for (var i = 0; i < sparks.length; i++) {
         if (sparks[i].alive)
             newA.push(sparks[i]);
     }
@@ -1392,13 +1381,12 @@ var SinkSpark = (function() {
 var Trajectory = (function() {
 
     function Trajectory() {
+        this.dx = 0;
+        this.dy = 0;
     }
 
-    Trajectory.prototype.step = function() {
-    };
-
     Trajectory.prototype.draw = function() {
-        if (false == (timeStarPower && (tms - timeStarPower < msPerStarPower)))
+        if (!starPower)
             return;
         this.dx = cannon.dx;
         this.dy = cannon.dy;
@@ -1419,11 +1407,7 @@ var Trajectory = (function() {
             var iters = 0;
             var distTraveled = 0;
             var ddx, ddy;
-            var distLimit = ((tms - timeStarPower) / msPerStarPower);
-            distLimit = Math.pow(distLimit, 0.2);
-            distLimit = 1 - distLimit;
-            distLimit *= 3000;
-            distLimit += 70
+            var distLimit = 3000
             while (true) {
                 vyPrev = vy;
                 vy += gravity * dms;
@@ -1441,19 +1425,16 @@ var Trajectory = (function() {
                 // Check bounds - end of shot conditions.
                 if (distTraveled > distLimit)
                     break;
-                const edgeLimit = 20;
-                if (dx < -shotRadius - edgeLimit)
+                var s = {'dx': dx, 'dy': dy};
+                if (isFallenFromVision(s, 20 + shotRadius))
                     break;
-                else if (canvasW + shotRadius + edgeLimit < dx)
-                    break;
-                else if (canvasH + shotRadius + edgeLimit < dy)
-                    break;
-                        
+                
                 // Collide with all game objects.
                 for (var i = 0; i < gobs.length; i++) {
-                    gobs[i].collide(this);
+                    if (typeof gobs[i].collide == 'function')
+                        gobs[i].collide(this);
                 }
-                iters ++;
+                iters++;
             }
             g.stroke();
             dms = backupDms;
@@ -1464,20 +1445,66 @@ var Trajectory = (function() {
         this.dy = 0;
     };
 
-    Trajectory.prototype.collide = function(shot) {
+    return Trajectory;
+})();
+
+var PermBonus = (function() {
+
+    function PermBonus(dxi, dyi) {
+        this.dx = dxi;
+        this.dy = dyi;
+        this.radius = 10;
+        this.hit = false;
+    }
+
+    PermBonus.prototype.step = function() {
     };
 
-    return Trajectory;
+    PermBonus.prototype.draw = function() {
+        if (this.hit)
+            return;
+        
+        g.drawGlassBall(0, 0, this.radius, '#fc0', 1.0);
+    };
+
+    PermBonus.prototype.collide = function(shot) {
+        if (!(shot instanceof Shot))
+            return;
+    
+        var x0 = shot.dxPrev;
+        var y0 = shot.dyPrev;
+        var x1 = shot.dx;
+        var y1 = shot.dy;
+        var dx = this.dx;
+        var dy = this.dy;
+        var dSqrd = sqrSegPoint(x0, y0, x1, y1, dx, dy);
+
+        var maxRadius = shotRadius + this.radius;
+        if (dSqrd <= maxRadius*maxRadius) {
+            // Slow the game for drama.
+            if (!this.hit) {
+                timeOfAnyHit = tms;
+                this.hit = true;
+                push_multi_sound('bonus');
+                var eyePermBonus = 25;
+                goldThisTurn += eyePermBonus;
+                gobs.push(new Bonus(this.dx, this.dy - 29, eyePermBonus, true));
+            }
+        }
+    };
+
+    return PermBonus;
 })();
 
 var LayerScore = (function() {
 
     function LayerScore() {
         this.shot = -shotCost;
-        this.fuel = -cannon.fuel;
+        this.fuel = -fuelCost;
         this.gold = goldThisTurn;
         this.net  = this.shot + this.fuel + this.gold;
         this.timeCreated = time();
+        isCannonFocused = false;
 
         // Update shots.
         if (false && shots % shotsPerBonus == 0) {
@@ -1544,20 +1571,21 @@ var LayerScore = (function() {
         oy -= 18;
         g.strokeLine(x + 35, oy, x + w - 35, oy);
         
-        // Net number.
+        // Big number.
         setFont(38);
         g.textAlign = 'center'
         ox = x + w / 2; oy = y + 208;
         g.strokeStyle = '#000';
         g.lineWidth = 12;
         g.lineJoin = 'round';
-        var color = (this.net > 0) ? '#0f0' : '#f00';
+        var value = this.net;
+        var color = (value > 0) ? '#0f0' : '#f00';
         var gray = '#999';
-        var colored = Math.min(Math.abs(this.net) * 0.02, 1.0);
+        var colored = Math.min(Math.abs(value) * 0.02, 1.0);
         color = linearColor(gray, color, colored);
         g.fillStyle = color;
-        g.strokeText(showSign(this.net),  ox, oy);
-        g.fillText(showSign(this.net),  ox, oy - 1);
+        g.strokeText(showSign(value),  ox, oy);
+        g.fillText(showSign(value),  ox, oy - 1);
         g.textAlign = 'left';
     };
 
@@ -1582,7 +1610,7 @@ function finishScore(layer) {
     
     changeGold(layer.net);
     
-    totalFuelUsed += cannon.fuel;
+    totalFuelUsed += layer.fuel;
     totalGoldWon += layer.gold;
     
     if (!hitsMade)
@@ -1623,6 +1651,7 @@ var LayerGameOver = (function() {
         this.gameTime = time() - timeGameStart;
         this.timeCreated = time();
         mostShots = shots;
+        isCannonFocused = false;
         
         // Create score from game.
         addGameScore();

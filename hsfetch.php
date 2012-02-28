@@ -5,7 +5,7 @@ $link = mysql_connect('jetpoo.db', 'guest', 'wertiu87')
 mysql_select_db('hellocannon') or die('Could not select database');
 
 // Performing SQL query
-$query = 'SELECT * FROM scores ORDER BY shots DESC';
+$query = "SELECT name, shots FROM ( SELECT name, shots FROM scores WHERE name <> '' ORDER BY shots DESC ) AS grouped GROUP BY name ORDER BY shots DESC LIMIT 0, 12";
 $result = mysql_query($query) or die('Query failed: ' . mysql_error());
 
 // Printing results in JSON

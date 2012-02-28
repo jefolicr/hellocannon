@@ -51,8 +51,8 @@ function updateHighscores() {
         var score = scores[i];
         s = s+'<tr><td>'+score.shots+' shots</td><td>'+score.name+'</td></tr>';
     }
-    var title = 'Local Highscores';
-    s = '<table><thead><tr><td>'+title+':</td></tr></thead><tbody>'+s+'</tbody></table>';
+    var title = 'Personal Highscores'; // overflow-x: visible; 
+    s = '<table><thead><tr><td colspan="2">'+title+':</td></tr></thead><tbody>'+s+'</tbody></table>';
     document.getElementById('hslocal').innerHTML = s;
     
     // Redraw global highscores.
@@ -72,13 +72,13 @@ function updateHighscores() {
             
             // Create html table.
             var s = '';
-            var title = 'Global Highscores';
+            var title = 'World Highscores';
             var len = Math.min(scores.length, maxScores);
             for (var i = 0; i < len; i++) {
                 var score = scores[i];
                 s = s+'<tr><td>'+score.shots+' shots</td><td>'+score.name+'</td></tr>';
             }
-            s = '<table><thead><tr><td>'+title+':</td></tr></thead><tbody>'+s+'</tbody></table>';
+            s = '<table><thead><tr><td colspan="2">'+title+':</td></tr></thead><tbody>'+s+'</tbody></table>';
             document.getElementById('hsglobal').innerHTML = s;
         },
         error: function(data, textStatus, jqXHR) {
@@ -117,7 +117,7 @@ function addGameScore(game) {
     jQuery.ajax({
         type: 'POST',
         url: 'hsstore.php',
-        dataType: 'text',
+        dataType: 'json',
         data: data,
         success: function(data, textStatus, jqXHR) {
             // console.log("SUCCESS hsstore.php {data: " + data + " textStatus: " + textStatus + " jqXHR: " + jqXHR + "}");

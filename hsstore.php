@@ -13,6 +13,8 @@ $score = $_POST;
 $timePosted = time(); // timestamp in seconds
 $timeFinished = gmp_init($score["timeFinished"], 10);
 $name = preg_replace('/[^a-zA-Z0-9_ ]/', "", substr($score["name"], 0, 32));
+//  html: 
+// mysql: mysql_real_escape_string
 $timePlayed = (int) $score["timePlayed"];
 $eyes = (int) $score["eyes"];
 $gold = (int) $score["gold"];
