@@ -1,119 +1,246 @@
+//
+// My library of simple reuseable code.
+//
+
+"use strict";
+
+//
+// Iteration
+//
+
+// Copied from https://developer.mozilla.org/en/JavaScript/Reference/Global_Objects/Array/forEach
+
+if (!Array.prototype.forEach) {
+	Array.prototype.forEach = function(fun /*, thisArg */) {
+		"use strict";
+	 
+		if (this == null)
+			throw new TypeError('can not convert ' + this + ' to object');
+	 
+		var t = Object(this);
+		var len = t.length >>> 0;
+		if (typeof fun != 'function')
+			throw new TypeError(fun + ' is not callable');
+	 
+		var thisArg = arguments[1];
+		for (var i = 0; i < len; i++) {
+			if (i in t)
+				fun.call(thisArg, t[i], i, t);
+		}
+	};
+}
+
+function forNum(num, fun /*, thisArg */) {
+	var thisArg = arguments[2];
+	while (--num >= 0)
+		fun.call(thisArg, num);
+}
+
+function table(tab) {
+	var rows = [];
+	var header = tab.shift();
+	tab.forEach(function(v) {
+		var row = {};
+		header.forEach(function(c, i) {
+			row[c] = v[i];
+		});
+		rows.push(row);
+	});
+	return rows;
+}
+
+Array.prototype.lastval = function(fun /*, thisArg */) {
+	var t = this;
+	var thisArg = arguments[1];
+	for (var i = t.length; i-- > 0; ) {
+		if (fun.call(thisArg, t[i], i, t))
+			return t[i];
+	}
+	return null;
+};
 
 //
 // Misc.
 //
 
-Math.round = function(x, m) {
-    if (x < 0)
-        x -= (m - 1) / 2;
-    else
-        x += (m - 1) / 2;
-    return x - (x % m);
+Function.prototype.extend = function(parent) {
+	this.prototype.__super__ = parent;
+	this.prototype.draw = parent.prototype.draw;
+	this.prototype.onKeyPress = parent.prototype.onKeyPress;
+	this.prototype.onKeyRelease = parent.prototype.onKeyRelease;
+	this.prototype.step = parent.prototype.step;
+	this.prototype.collide = parent.prototype.collide;
 }
 
 Math.sign = function(x) {
-    if (x < 0)
-        return -1;
-    else if (x > 0)
-        return 1;
-    else
-        return 0;
+	return (x < 0) ? -1 : 1;
 }
 
 function randInt(n) {
-    return Math.floor(Math.random() * n);
+	return Math.floor(Math.random() * n);
 }
 
 function rand() {
-    return Math.random();
+	return Math.random();
 }
 
 function time() {
-    return new Date().getTime();
+	return new Date().getTime();
 }
 
 function fill(c, len) {
-    var fill = '';
-    if (!(len > 0))
-        return fill;
-    for (var i = Math.floor(len); i-- != 0; )
-        fill += c;
-    return fill;
+	// Catch undefined or NaN or negative or zero or fraction less than 1.
+	if (len >= 1) {
+		var fill = new Array(len);
+		while (--len >= 0)
+			fill[len] = c;
+		return fill.join("");
+	}
+	return "";
 }
 
 function padl(s, c, newLength) {
-    return fill(c, newLength - s.length) + s;
+	return fill(c, newLength - s.length) + s;
 }
 
 function msToString(ms) {
-    ms = Math.floor(ms / 1000);
-    var s = ''+(ms % 60);
-    ms = Math.floor(ms / 60);
-    s = (ms % 60)+':'+padl(s, '0', 2);
-    if (ms < 60)
-        return s;
-    ms = Math.floor(ms / 60);
-    s = (ms % 60)+':'+padl(s, '0', 5);
-    if (ms < 60)
-        return s;
-    ms = Math.floor(ms / 60);
-    s = (ms % 24)+':'+padl(s, '0', 8);
-    if (ms < 24)
-        return s;
-    ms = Math.floor(ms / 24);
-    s = ms+' days '+s;
-    return s;
+	ms = Math.floor(ms / 1000);
+	var s = ""+(ms % 60);
+	ms = Math.floor(ms / 60);
+	s = (ms % 60)+":"+padl(s, "0", 2);
+	if (ms < 60)
+		return s;
+	ms = Math.floor(ms / 60);
+	s = (ms % 60)+":"+padl(s, "0", 5);
+	if (ms < 60)
+		return s;
+	ms = Math.floor(ms / 60);
+	s = (ms % 24)+":"+padl(s, "0", 8);
+	if (ms < 24)
+		return s;
+	ms = Math.floor(ms / 24);
+	s = ms+" days "+s;
+	return s;
 }
+
+function isFunction(o) {
+	return jQuery.isFunction(o);
+}
+
+//
+// Viewport dimensions.
+//
+
+// Copied from http://andylangton.co.uk/articles/javascript/get-viewport-size-javascript/
+function viewportSize() {
+	var viewportwidth;
+	var viewportheight;
+
+	// the more standards compliant browsers (mozilla/netscape/opera/IE7) use window.innerWidth and window.innerHeight
+
+	if (typeof window.innerWidth != 'undefined')
+	{
+		viewportwidth = window.innerWidth,
+		viewportheight = window.innerHeight
+	}
+
+	// IE6 in standards compliant mode (i.e. with a valid doctype as the first line in the document)
+
+	else if (typeof document.documentElement != 'undefined'
+		&& typeof document.documentElement.clientWidth !=
+		'undefined' && document.documentElement.clientWidth != 0)
+	{
+		viewportwidth = document.documentElement.clientWidth,
+		viewportheight = document.documentElement.clientHeight
+	}
+
+	// older versions of IE
+
+	else
+	{
+		viewportwidth = document.getElementsByTagName('body')[0].clientWidth,
+		viewportheight = document.getElementsByTagName('body')[0].clientHeight
+	}
+	return {
+		w: viewportwidth,
+		h: viewportheight
+	};
+}
+
 
 //
 // Color.
 //
 
-// that - another color, amount - 0 to 1.0, return new RGBColor.
-// TODO: Make this work with alpha.
-RGBColor.prototype.linear = function(that, amount) {
-    var tnuoma = 1.0 - amount;
-    var r = Math.floor(this.r * tnuoma + that.r * amount);
-    var g = Math.floor(this.g * tnuoma + that.g * amount);
-    var b = Math.floor(this.b * tnuoma + that.b * amount);
-    return new RGBColor('rgb('+r+','+g+','+b+')');
+var Color = (function() {
+	
+	function Color(str) {
+		str = str.replace(/ /g,'');
+		
+		// Assume hexadecimal if length is short.
+		var len = str.length;
+		if (len < 9) {
+			if (str.charCodeAt(0) == 35) // '#' char code
+				str = str.substr(1, 6);
+			var n = parseInt(str, 16);
+			if (len < 5) {
+				this.b = 17 * (n & 15);
+				this.g = 17 * ((n >> 4) & 15);
+				this.r = 17 * (n >> 8);
+			}
+			else {
+				this.b = n & 255;
+				this.g = (n >> 8) & 255;
+				this.r = n >> 16;
+			}
+			this.a = 1;
+		}
+		else {
+			var parts;
+			if (str.charCodeAt(3) == 40) { // '(' char code
+				parts = rgbRe.exec(str);
+				this.a = 1;
+			}
+			else {
+				parts = rgbaRe.exec(str);
+				this.a = parseFloat(parts[4]);
+			}
+			this.r = parseInt(parts[1], 10);
+			
+			this.g = parseInt(parts[2], 10);
+			this.b = parseInt(parts[3], 10);
+		}
+	}
+	
+	var rgbaRe = /^rgba\((\d{1,3}),(\d{1,3}),(\d{1,3}),(\d?\.?\d*)\)$/i;
+	var rgbRe = /^rgb\((\d{1,3}),(\d{1,3}),(\d{1,3})\)$/i;
+	
+	return Color;
+})();
+
+function rgb(r, g, b, a) {
+	var x = "rgba("+r+","+g+","+b+","+a+")";
+	return x;
 }
 
-// string color c1, c2, float 0<=amount<=1.0
-// return string color
-function linearColor(c1, c2, amount) {
-    var rgb1 = new RGBColor(c1);
-    var rgb2 = new RGBColor(c2);
-    var rgbResult = rgb1.linear(rgb2, amount);
-    return rgbResult.toHex();
+function hue(h) {
+	var ou = new HSVColour(h * 360, 100, 100);
+	return ou.getCSSIntegerRGB();
 }
 
-// string color c, float 0<=a<=1.0
-// return string color
-function setAlpha(c, a) {
-    
+String.prototype.shiftColor = function(that, amount) {
+	var ca = new Color(that);
+	var ci = new Color(this);
+	var r = Math.floor(ci.r + amount * (ca.r - ci.r));
+	var g = Math.floor(ci.g + amount * (ca.g - ci.g));
+	var b = Math.floor(ci.b + amount * (ca.b - ci.b));
+	var a = ci.a + amount * (ca.a - ci.a);
+	return rgb(r, g, b, a);
 }
 
-// return string color
-function randHue() {
-    var cr = rand();
-    var cg = rand();
-    var cb = rand();
-    var x = Math.min(cr, Math.min(cg, cb));
-    cr -= x;
-    cg -= x;
-    cb -= x;
-    x = Math.max(cr, Math.max(cg, cb));
-    if (x == 0) {
-        return randHue();
-    }
-    else {
-        x = 1.0 / x;
-        cr = Math.floor(cr * x * 255);
-        cg = Math.floor(cg * x * 255);
-        cb = Math.floor(cb * x * 255);
-    }
-    return 'rgb('+cr+', '+cg+', '+cb+')';
+String.prototype.alpha = function(v) {
+	var o = new Color(this);
+	return rgb(o.r, o.g, o.b, o.a * v);
 }
 
 //
@@ -121,379 +248,561 @@ function randHue() {
 //
 
 Array.prototype.indexOf = function(object) {
-    for (var i = this.length; i-- != 0;) {
-        if (this[i] === object)
-            return i;
-    }
-    return -1;
+	var i = this.length;
+	while (i--) {
+		if (this[i] === object)
+			break;
+	}
+	return i;
 }
 
 Array.prototype.remove = function(object) {
-    var i = this.indexOf(object);
-    if (i == -1)
-        return null;
-    else {
-        object = this[i]; // I don't know javascript very well. I just did this just to ensure that a reference to the original object in the array is returned - like if it's numbers or something? I dunno. Whatever. Doesn't matter, but I'll leave it.
-        this.splice(i, 1);
-        return object;
-    }
+	var i = this.indexOf(object);
+	return (~i)
+		? this.splice(i, 1)[0]
+		: undefined;
 }
 
 //
 // Drawing.
 //
 
-CanvasRenderingContext2D.prototype.strokeCircle = function(x, y, radius) {
-    if (this.lineWidth * 0.5 >= radius) {
-        var fsBackup = this.fillStyle;
-        this.fillStyle = this.strokeStyle;
-        this.fillCircle(x, y, radius + this.lineWidth * 0.5);
-        this.fillStyle = fsBackup;
-    }
-    else {
-        this.beginPath();
-        this.arc(x, y, radius, 0, Math.PI*2, false);
-        this.stroke();
-    }
+CanvasRenderingContext2D.prototype.strokeAndFillText = function(text, x, y) {
+	this.strokeText(text, x, y);
+	this.fillText(text, x, y);
+}
+
+CanvasRenderingContext2D.prototype.fillWithStrokeStyle = function() {
+	var fsBackup = this.fillStyle;
+	this.fillStyle = this.strokeStyle;
+	this.fill();
+	this.fillStyle = fsBackup;
+}
+
+CanvasRenderingContext2D.prototype.ellipse = function(x, y, r1, r2) {
+	this.beginPath();
+	this.arc(x, y, radius, 0, Math.PI*2, false);
+}
+
+CanvasRenderingContext2D.prototype.circle = function(x, y, radius) {
+	this.beginPath();
+	this.arc(x, y, radius, 0, Math.PI*2, false);
 }
 
 CanvasRenderingContext2D.prototype.fillCircle = function(x, y, radius) {
-    this.beginPath();
-    this.arc(x, y, radius, 0, Math.PI*2, false);
-    this.fill();
+	this.circle(x, y, radius);
+	this.fill();
 }
 
-CanvasRenderingContext2D.prototype.strokeLine = function(x0, y0, x1, y1) {
-    this.beginPath();
-    this.moveTo(x0, y0);
-    this.lineTo(x1, y1);
-    this.stroke();
+CanvasRenderingContext2D.prototype.strokeCircle = function(x, y, radius) {
+	if (this.lineWidth * 0.5 >= radius) {
+		this.circle(x, y, radius + this.lineWidth * 0.5);
+		this.fillWithStrokeStyle();
+	}
+	else {
+		this.circle(x, y, radius);
+		this.stroke();
+	}
+}
+
+CanvasRenderingContext2D.prototype.strokeLine = function(x, y, w, h) {
+	this.beginPath();
+	this.moveTo(x, y);
+	this.lineTo(x + w, y + h);
+	this.stroke();
 }
 
 CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
-    with (this) {
-        beginPath();
-        moveTo(x + r, y);
-        arcTo(x + w, y, x + w, y + r, r);
-        arcTo(x + w, y + h, x + w - r, y + h, r);
-        arcTo(x, y + h, x, y + h - r, r);
-        arcTo(x, y, x + r, y, r);
-    }
+	this.beginPath();
+	this.moveTo(x + r, y);
+	this.arcTo(x + w, y, x + w, y + r, r);
+	this.arcTo(x + w, y + h, x + w - r, y + h, r);
+	this.arcTo(x, y + h, x, y + h - r, r);
+	this.arcTo(x, y, x + r, y, r);
 }
 
 CanvasRenderingContext2D.prototype.fillRoundRect = function(x, y, w, h, r) {
-    this.roundRect(x, y, w, h, r);
-    this.fill();
+	this.roundRect(x, y, w, h, r);
+	this.fill();
 }
 
 CanvasRenderingContext2D.prototype.strokeRoundRect = function(x, y, w, h, r) {
-    this.roundRect(x, y, w, h, r);
-    this.stroke();
+	this.roundRect(x, y, w, h, r);
+	this.stroke();
 }
 
-CanvasRenderingContext2D.prototype.strokeRoundRectDarkSide = function(x, y, w, h, r) {
-    with (this) {
-        beginPath();
-        moveTo(x + r, y);
-        lineTo(x + w - r, y);
-        moveTo(x + w, y + r);
-        arcTo(x + w, y + h, x + w - r, y + h, r);
-        lineTo(x + r, y + h);
-        moveTo(x, y + h - r);
-        arcTo(x, y, x + r, y, r);
-        stroke();
-    }
-}
-
-CanvasRenderingContext2D.prototype.drawGlassBall = function(x, y, r, color, alpha) {
-    var rgb = new RGBColor(color);
-    var cr = rgb.r;
-    var cg = rgb.g;
-    var cb = rgb.b;
-    var ca = alpha;
-    var grad;
-    
-    // Draw black edge accent and glow.
-    grad = this.createRadialGradient(x, y, 0, x, y, r * 1.2);
-    grad.addColorStop(0.5, 'rgba('+cr+', '+cg+', '+cb+', '+(ca * 1.0)+')');
-    grad.addColorStop(0.75, 'rgba('+Math.floor(cr*0.925)+', '+Math.floor(cg*0.925)+', '+Math.floor(cb*0.925)+', '+(ca * 0.925 + 0.075)+')');
-    grad.addColorStop(0.8, 'rgba('+Math.floor(cr*0.875)+', '+Math.floor(cg*0.875)+', '+Math.floor(cb*0.875)+', '+(ca * 0.875 + 0.125)+')');
-    grad.addColorStop(0.833, 'rgba('+Math.floor(cr*0.775)+', '+Math.floor(cg*0.775)+', '+Math.floor(cb*0.775)+', '+(ca * 0.775 + 0.225)+')');
-    const ig = ca * 0.6; // Intensity of glow.
-    grad.addColorStop(0.843, 'rgba('+cr+', '+cg+', '+cb+', '+(ig * 1.0)+')');
-    grad.addColorStop(0.874, 'rgba('+cr+', '+cg+', '+cb+', '+(ig * 0.5)+')');
-    grad.addColorStop(0.915, 'rgba('+cr+', '+cg+', '+cb+', '+(ig * 0.24)+')');
-    grad.addColorStop(0.956, 'rgba('+cr+', '+cg+', '+cb+', '+(ig * 0.1)+')');
-    grad.addColorStop(1.0, 'rgba('+cr+', '+cg+', '+cb+', '+(ig * 0.0)+')');
-    this.fillStyle = grad;
-    this.fillCircle(x, y, r * 1.2);
-    
-    // Draw general shine.
-    const dl = 0.3; // Brightness.
-    grad = this.createRadialGradient(x - r * 0.4, y - r * 0.5, 0, x - r * 0.2, y - r * 0.25, r * 0.8);
-    grad.addColorStop(0.0, 'rgba(255, 255, 255, '+dl+')');
-    grad.addColorStop(1.0, 'rgba(255, 255, 255, 0.0)');
-    this.fillStyle = grad;
-    this.fillCircle(x - r * 0.2, y - r * 0.25, r * 0.8);
-    
-    // Draw reflection of light source.
-    const ld = 0.9; // Brightness.
-    x -= r * 0.35;
-    y -= r * 0.45;
-    grad = this.createRadialGradient(x, y, 0, x, y, r * 0.4);
-    grad.addColorStop(0.0, 'rgba(255, 255, 255, '+(1.0*ld)+')');
-    grad.addColorStop(0.05, 'rgba(255, 255, 255, '+(1.0*ld)+')');
-    grad.addColorStop(0.15, 'rgba(255, 255, 255, '+(0.9*ld)+')');
-    grad.addColorStop(0.4, 'rgba(255, 255, 255, '+(0.43*ld)+')');
-    grad.addColorStop(0.5, 'rgba(255, 255, 255, '+(0.2*ld)+')');
-    grad.addColorStop(0.6, 'rgba(255, 255, 255, '+(0.1*ld)+')');
-    grad.addColorStop(1.0, 'rgba(255, 255, 255, '+(0.0*ld)+')');
-    this.fillStyle = grad;
-    this.fillCircle(x, y, r * 0.4);
+CanvasRenderingContext2D.prototype.polygon = function(points) {
+	if (points.length < 1)
+		return;
+	this.beginPath();
+	this.moveTo(points[0][0], points[0][1]);
+	points.forEach(function(p) {
+		this.lineTo(p[0], p[1]);
+	}, this);
 }
 
 CanvasRenderingContext2D.prototype.fillPolygon = function(points) {
-    n = points.length;
-    if (n < 1)
-        return;
-    var p0 = points[0];
-    var p;
-    with (this) {
-        beginPath();
-        moveTo(p0.x, p0.y);
-        for (var i = 0; i < n; i++) {
-            p = points[i];
-            lineTo(p.x, p.y);
-        }
-        fill();
-    }
+	this.polygon(points);
+	this.fill();
 }
 
-CanvasRenderingContext2D.prototype.fillStar = function(x, y, r, rotation) {
-    this.fillStarGeneric(x, y, r * 0.382, r, rotation - Math.PI * 0.5, 5);
+CanvasRenderingContext2D.prototype.strokePolygon = function(points) {
+	this.polygon(points);
+	this.stroke();
 }
 
-CanvasRenderingContext2D.prototype.fillStarGeneric = function(x, y, rInner, rOuter, rotation, numPoints) {
-    this.fillPolygon(generateStar(x, y, rInner, rOuter, rotation, numPoints));
+CanvasRenderingContext2D.prototype.star = function(x, y, r1, r2, rotation, numPoints) {
+	this.polygon(createStar(x, y, r1, r2, rotation, numPoints));
 }
 
-function generateStar(x, y, rInner, rOuter, rotation, numPoints) {
-    const npoints = numPoints * 2;
-    var points = new Array();
-    
-    var angle = rotation;
-    const angleInc = Math.PI / numPoints;
-    var i = 0;
-    var dx, dy;
-    while (i < npoints) {
-        dx = x + Math.cos(angle) * rOuter;
-        dy = y + Math.sin(angle) * rOuter;
-        points.push(new Point(dx, dy));
-        angle += angleInc;
-        i++;
-
-        dx = x + Math.cos(angle) * rInner;
-        dy = y + Math.sin(angle) * rInner;
-        points.push(new Point(dx, dy));
-        angle += angleInc;
-        i++;
-    }
-    
-    return points;
+CanvasRenderingContext2D.prototype.fillStar = function(x, y, r1, r2, rotation, numPoints) {
+	this.fillPolygon(createStar(x, y, r1, r2, rotation, numPoints));
 }
 
-//
-// Geometry.
-//
+CanvasRenderingContext2D.prototype.strokeStar = function(x, y, r1, r2, rotation, numPoints) {
+	this.fillPolygon(createStar(x, y, r1, r2, rotation, numPoints));
+}
 
-var Point = (function() {
-    
-    function Point(x, y) {
-        this.x = x;
-        this.y = y;
-    }
-    
-    return Point;
+var Renderable = (function () {
+
+	function Renderable(bounds, render, layer) {
+		this.bounds = bounds;
+		this.render = render;
+		this.layer = layer;
+		this.key = "";
+		this.useCanvas = true;
+		this.keyRendered = undefined;
+	}
+	
+	Renderable.prototype.draw = function() {
+		if (!this.useCanvas) {
+			this.render.call(this.layer);
+			return;
+		}
+		
+		// Renderables appear blurry unless they are cached on 
+		// canvases which are scaled by the same amount as the
+		// window so that the cache image is not up or down 
+		// sampled when drawn.
+		var scale = Renderable.prototype.scale || 1.0;
+		
+		var bounds = this.bounds;
+		var canvas = this.canvas;
+		var gBackup = g;
+		var spacing = 1.0
+		var ox = bounds.x - spacing;
+		var oy = bounds.y - spacing;
+		if (canvas == undefined) {
+			canvas = document.createElement("canvas");
+			this.canvas = canvas;
+			canvas.width = Math.ceil(scale * bounds.w + 2 * spacing);
+			canvas.height = Math.ceil(scale * bounds.h + 2 * spacing);
+		}
+		if (this.keyRendered != this.key) {
+			g = canvas.getContext("2d");
+			if (this.keyRendered != undefined) {
+				g.clearRect(0, 0, canvas.width, canvas.height);
+			}
+			if (Renderable.prototype.showCanvasEdges) {
+				g.strokeStyle = "#f00";
+				g.strokeRect(0, 0, canvas.width, canvas.height);
+			}
+			g.save();
+			g.scale(scale, scale);
+			g.translate(-ox, -oy);
+			this.render.call(this.layer);
+			this.keyRendered = this.key;
+			g.restore();
+			g = gBackup;
+		}
+		g.save();
+		var elacs = 1.0 / scale;
+		g.translate(ox, oy);
+		g.scale(elacs, elacs);
+		g.drawImage(canvas, 0, 0);
+		g.restore();
+	}
+	
+	return Renderable;
 })();
 
+//
+// Math.
+//
+
+function translate(array, tx, ty) {
+	var i = array.length;
+	var v;
+	while (i-- > 0) {
+		v = array[i];
+		v[0] += tx;
+		v[1] += ty;
+	}
+}
+
+function rotate(array, ra) {
+	var c = Math.cos(ra);
+	var s = Math.sin(ra);
+	var x, y;
+	var i = array.length;
+	var v;
+	while (i-- > 0) {
+		v = array[i];
+		x = v[0];
+		y = v[1];
+		v[0] = x * c - y * s;
+		v[1] = x * s + y * c;
+	}
+}
+
+function scale(array, sx, sy) {
+	var i = array.length;
+	var v;
+	while (i-- > 0) {
+		v = array[i];
+		v[0] *= sx;
+		v[1] *= sy;
+	}
+}
+
+function minimize(fun, min, max /*, precision, initialGuess */) {
+	var precision = arguments[3] || 0.00001;
+	var initialGuess = arguments[4] || min + (max - min) * 0.41421;
+	
+	if (min > initialGuess || initialGuess > max) {
+		throw "Failed assertion: min < initialGuess < max: "+min+" < "+initialGuess+" < "+max;
+	}
+	
+	if (precision <= 0) {
+		throw "Failed assertion: precision > 0: "+precision+" > 0";
+	}
+	
+	var gprev, fungprev;
+	var gnext, fungnext;
+	
+	gprev = initialGuess;
+	fungprev = fun(gprev);
+
+	precision *= 2;
+	while (max - min > precision) {
+		if (gprev - min < max - gprev) {
+			gnext = (gprev + max) * 0.5;
+			fungnext = fun(gnext);
+		
+			if (fungnext < fungprev) {
+				min = gprev;
+				gprev = gnext;
+				fungprev = fungnext;
+			}
+			else {
+				max = gnext;
+			}
+		}
+		else {
+			gnext = (gprev + min) * 0.5;
+			fungnext = fun(gnext);
+		
+			if (fungnext < fungprev) {
+				max = gprev;
+				gprev = gnext;
+				fungprev = fungnext;
+			}
+			else {
+				min = gnext;
+			}
+		}
+	}
+	
+	return (max + min) * 0.5;
+}
+
+function createStar(x, y, r1, r2, rotation, numPoints) {
+	var npoints = numPoints * 2;
+	var points = [];
+	
+	var angle = rotation;
+	var angleInc = Math.PI / numPoints;
+	var i = 0;
+	var dx, dy;
+	while (i < npoints) {
+		dx = x + Math.cos(angle) * r2;
+		dy = y + Math.sin(angle) * r2;
+		points.push([dx, dy]);
+		angle += angleInc;
+		i++;
+
+		dx = x + Math.cos(angle) * r1;
+		dy = y + Math.sin(angle) * r1;
+		points.push([dx, dy]);
+		angle += angleInc;
+		i++;
+	}
+	
+	return points;
+}
+
+var Bounds = (function() {
+	
+	function Bounds(x, y, w, h) {
+		this.x = x;
+		this.y = y;
+		this.w = w;
+		this.h = h;
+	}
+	
+	return Bounds;
+})();
+    
+function intersectLines(x1, y1, x2, y2,
+                        xA, yA, xB, yB)
+	{
+	var yByA = yB - yA;
+	var x2x1 = x2 - x1;
+	var xBxA = xB - xA;
+	var y2y1 = y2 - y1;
+	var den = yByA * x2x1 - xBxA * y2y1;
+	if (den == 0)
+		return null;
+
+	var y1yA = y1 - yA;
+	var x1xA = x1 - xA;
+	var num = xBxA * y1yA - yByA * x1xA;
+
+	var x = x1 + x2x1 * num / den;
+	var y = y1 + y2y1 * num / den;
+	return [x, y];
+}
+
 function project(x1, y1, x2, y2) {
-    var p = new Array();
-    var r = (x1 * x2 +  y1 * y2) / (x2 * x2 + y2 * y2);
-    p[0] = r * x2;
-    p[1] = r * y2;
-    return p;
+	var p = [];
+	var r = (x1 * x2 +  y1 * y2) / (x2 * x2 + y2 * y2);
+	p[0] = r * x2;
+	p[1] = r * y2;
+	return p;
+}
+
+function normal(dx, dy) {
+	var h = mag(dx, dy);
+	return [dx / h, dy / h];
 }
 
 function mag(dx, dy) {
-    return Math.sqrt(dx * dx + dy * dy);
+	return Math.sqrt(dx * dx + dy * dy);
 }
 
 function sqr(dx, dy) {
-    return dx * dx + dy * dy;
+	return dx * dx + dy * dy;
 }
 
 // return p0p1 x p0p2
 function cross(x1, y1, x2, y2, x0, y0) {
-    var a = (y1 - y0) * (x2 - x0);
-    var b = (y2 - y0) * (x1 - x0);
-    return a - b;
+	var a = (y1 - y0) * (x2 - x0);
+	var b = (y2 - y0) * (x1 - x0);
+	return a - b;
 }
 
 // return p1p2 . p2p3
 function dot(x1, y1, x2, y2, x3, y3) {
-    var a = (x2 - x1) * (x3 - x2);
-    var b = (y2 - y1) * (y3 - y2);
-    return a + b;
+	var a = (x2 - x1) * (x3 - x2);
+	var b = (y2 - y1) * (y3 - y2);
+	return a + b;
 }
 
-// return distance squared between x0,y0 and line-segment(x1,y1,x2,y2)
-function sqrSegPoint(x1, y1, x2, y2, x0, y0) {
-    // If point lies beyond line segment endpoint (x1,y1),
-    // then return distance to that endpoint.
-    if (dot(x1, y1, x2, y2, x0, y0) > 0)
-        return sqr(x2 - x0, y2 - y0);
-    
-    // If point lies beyond line segment endpoint (x2,y2),
-    // then return distance to that endpoint.
-    if (dot(x2, y2, x1, y1, x0, y0) > 0)
-        return sqr(x1 - x0, y1 - y0);
-    
-    // Otherwise, return distance to line.
-    var d = cross(x0, y0, x2, y2, x1, y1) / mag(x2 - x1, y2 - y1);
-    return d * d;
+// return distance squared between xp,yp and line-segment(x1,y1,x2,y2)
+function sqrPointSeg(xp, yp, x1, y1, x2, y2) {
+	// If point lies beyond line segment endpoint (x2, y2),
+	// then return distance to that endpoint.
+	if (dot(x1, y1, x2, y2, xp, yp) > 0)
+		return sqr(x2 - xp, y2 - yp);
+	
+	// If point lies beyond line segment endpoint (x1, y1),
+	// then return distance to that endpoint.
+	if (dot(x2, y2, x1, y1, xp, yp) > 0)
+		return sqr(x1 - xp, y1 - yp);
+	
+	// Otherwise, return distance to line.
+	var d = cross(xp, yp, x2, y2, x1, y1) / mag(x2 - x1, y2 - y1);
+	return d * d;
+}
+
+// return distance squared between xp,yp and line-segment(x1,y1,x2,y2)
+function segPointSeg(xp, yp, x1, y1, x2, y2) {
+	// If point lies beyond line segment endpoint (x2, y2),
+	// then return segment to that endpoint.
+	if (dot(x1, y1, x2, y2, xp, yp) > 0)
+		return [[xp, yp], [x2, y2]];
+	
+	// If point lies beyond line segment endpoint (x1, y1),
+	// then return segment to that endpoint.
+	if (dot(x2, y2, x1, y1, xp, yp) > 0)
+		return [[xp, yp], [x1, y1]];
+	
+	// Otherwise, return shortest segment to line.
+	var dx = x2 - x1;
+	var dy = y2 - y1;
+	var m = mag(dx, dy);
+	var f = Math.abs(cross(xp, yp, x2, y2, x1, y1) / (m * m));
+	return [[xp, yp], [xp - dy * f, yp + dx * f]];
+}
+
+function segEllipseSeg(a, b, x1, y1, x2, y2) {
+	var r = (a + b) * 0.5;
+	var ysign = Math.sign((y1 + y2) * 0.5);
+	var yox = function(x) {
+		return ysign * Math.sqrt(r * r - x * x);
+	};
+	var dox = function(x) {
+		return sqrPointSeg(x, yox(x), x1, y1, x2, y2);
+	};
+	var ex = minimize(dox, -r, r);
+	var ey = yox(ex);
+	return segPointSeg(ex, ey, x1, y1, x2, y2);
+}
+
+function segEllipsePoint(a, b, x1, y1) {
+	var aSqrd = 1 / (a * a);
+	var bSigned = b * Math.sign(y1);
+	var yox = function(x) {
+		return bSigned * Math.sqrt(1 - x * x * aSqrd)
+	};
+	var dox = function(x) {
+		return sqr(x - x1, yox(x) - y1);
+	};
+	var ex = minimize(dox, -b, b);
+	var ey = yox(ex);
+	return [[ex, ey], [x1, y1]];
 }
 
 //
 // Keyboard key codes.
-// Copied from http://stackoverflow.com/questions/1465374/javascript-event-keycode-constants
+// Copied from http://stackoverflow.com/questions/1465374/javascript-event-keycode-varants
 //
 
 if (typeof KeyEvent == "undefined") {
-    var KeyEvent = {
-        DOM_VK_CANCEL: 3,
-        DOM_VK_HELP: 6,
-        DOM_VK_BACK_SPACE: 8,
-        DOM_VK_TAB: 9,
-        DOM_VK_CLEAR: 12,
-        DOM_VK_RETURN: 13,
-        DOM_VK_ENTER: 14,
-        DOM_VK_SHIFT: 16,
-        DOM_VK_CONTROL: 17,
-        DOM_VK_ALT: 18,
-        DOM_VK_PAUSE: 19,
-        DOM_VK_CAPS_LOCK: 20,
-        DOM_VK_ESCAPE: 27,
-        DOM_VK_SPACE: 32,
-        DOM_VK_PAGE_UP: 33,
-        DOM_VK_PAGE_DOWN: 34,
-        DOM_VK_END: 35,
-        DOM_VK_HOME: 36,
-        DOM_VK_LEFT: 37,
-        DOM_VK_UP: 38,
-        DOM_VK_RIGHT: 39,
-        DOM_VK_DOWN: 40,
-        DOM_VK_PRINTSCREEN: 44,
-        DOM_VK_INSERT: 45,
-        DOM_VK_DELETE: 46,
-        DOM_VK_0: 48,
-        DOM_VK_1: 49,
-        DOM_VK_2: 50,
-        DOM_VK_3: 51,
-        DOM_VK_4: 52,
-        DOM_VK_5: 53,
-        DOM_VK_6: 54,
-        DOM_VK_7: 55,
-        DOM_VK_8: 56,
-        DOM_VK_9: 57,
-        DOM_VK_SEMICOLON: 59,
-        DOM_VK_EQUALS: 61,
-        DOM_VK_A: 65,
-        DOM_VK_B: 66,
-        DOM_VK_C: 67,
-        DOM_VK_D: 68,
-        DOM_VK_E: 69,
-        DOM_VK_F: 70,
-        DOM_VK_G: 71,
-        DOM_VK_H: 72,
-        DOM_VK_I: 73,
-        DOM_VK_J: 74,
-        DOM_VK_K: 75,
-        DOM_VK_L: 76,
-        DOM_VK_M: 77,
-        DOM_VK_N: 78,
-        DOM_VK_O: 79,
-        DOM_VK_P: 80,
-        DOM_VK_Q: 81,
-        DOM_VK_R: 82,
-        DOM_VK_S: 83,
-        DOM_VK_T: 84,
-        DOM_VK_U: 85,
-        DOM_VK_V: 86,
-        DOM_VK_W: 87,
-        DOM_VK_X: 88,
-        DOM_VK_Y: 89,
-        DOM_VK_Z: 90,
-        DOM_VK_CONTEXT_MENU: 93,
-        DOM_VK_NUMPAD0: 96,
-        DOM_VK_NUMPAD1: 97,
-        DOM_VK_NUMPAD2: 98,
-        DOM_VK_NUMPAD3: 99,
-        DOM_VK_NUMPAD4: 100,
-        DOM_VK_NUMPAD5: 101,
-        DOM_VK_NUMPAD6: 102,
-        DOM_VK_NUMPAD7: 103,
-        DOM_VK_NUMPAD8: 104,
-        DOM_VK_NUMPAD9: 105,
-        DOM_VK_MULTIPLY: 106,
-        DOM_VK_ADD: 107,
-        DOM_VK_SEPARATOR: 108,
-        DOM_VK_SUBTRACT: 109,
-        DOM_VK_DECIMAL: 110,
-        DOM_VK_DIVIDE: 111,
-        DOM_VK_F1: 112,
-        DOM_VK_F2: 113,
-        DOM_VK_F3: 114,
-        DOM_VK_F4: 115,
-        DOM_VK_F5: 116,
-        DOM_VK_F6: 117,
-        DOM_VK_F7: 118,
-        DOM_VK_F8: 119,
-        DOM_VK_F9: 120,
-        DOM_VK_F10: 121,
-        DOM_VK_F11: 122,
-        DOM_VK_F12: 123,
-        DOM_VK_F13: 124,
-        DOM_VK_F14: 125,
-        DOM_VK_F15: 126,
-        DOM_VK_F16: 127,
-        DOM_VK_F17: 128,
-        DOM_VK_F18: 129,
-        DOM_VK_F19: 130,
-        DOM_VK_F20: 131,
-        DOM_VK_F21: 132,
-        DOM_VK_F22: 133,
-        DOM_VK_F23: 134,
-        DOM_VK_F24: 135,
-        DOM_VK_NUM_LOCK: 144,
-        DOM_VK_SCROLL_LOCK: 145,
-        DOM_VK_COMMA: 188,
-        DOM_VK_PERIOD: 190,
-        DOM_VK_SLASH: 191,
-        DOM_VK_BACK_QUOTE: 192,
-        DOM_VK_OPEN_BRACKET: 219,
-        DOM_VK_BACK_SLASH: 220,
-        DOM_VK_CLOSE_BRACKET: 221,
-        DOM_VK_QUOTE: 222,
-        DOM_VK_META: 224
-    };
+	var KeyEvent = {
+		DOM_VK_CANCEL: 3,
+		DOM_VK_HELP: 6,
+		DOM_VK_BACK_SPACE: 8,
+		DOM_VK_TAB: 9,
+		DOM_VK_CLEAR: 12,
+		DOM_VK_RETURN: 13,
+		DOM_VK_ENTER: 14,
+		DOM_VK_SHIFT: 16,
+		DOM_VK_CONTROL: 17,
+		DOM_VK_ALT: 18,
+		DOM_VK_PAUSE: 19,
+		DOM_VK_CAPS_LOCK: 20,
+		DOM_VK_ESCAPE: 27,
+		DOM_VK_SPACE: 32,
+		DOM_VK_PAGE_UP: 33,
+		DOM_VK_PAGE_DOWN: 34,
+		DOM_VK_END: 35,
+		DOM_VK_HOME: 36,
+		DOM_VK_LEFT: 37,
+		DOM_VK_UP: 38,
+		DOM_VK_RIGHT: 39,
+		DOM_VK_DOWN: 40,
+		DOM_VK_PRINTSCREEN: 44,
+		DOM_VK_INSERT: 45,
+		DOM_VK_DELETE: 46,
+		DOM_VK_0: 48,
+		DOM_VK_1: 49,
+		DOM_VK_2: 50,
+		DOM_VK_3: 51,
+		DOM_VK_4: 52,
+		DOM_VK_5: 53,
+		DOM_VK_6: 54,
+		DOM_VK_7: 55,
+		DOM_VK_8: 56,
+		DOM_VK_9: 57,
+		DOM_VK_SEMICOLON: 59,
+		DOM_VK_EQUALS: 61,
+		DOM_VK_A: 65,
+		DOM_VK_B: 66,
+		DOM_VK_C: 67,
+		DOM_VK_D: 68,
+		DOM_VK_E: 69,
+		DOM_VK_F: 70,
+		DOM_VK_G: 71,
+		DOM_VK_H: 72,
+		DOM_VK_I: 73,
+		DOM_VK_J: 74,
+		DOM_VK_K: 75,
+		DOM_VK_L: 76,
+		DOM_VK_M: 77,
+		DOM_VK_N: 78,
+		DOM_VK_O: 79,
+		DOM_VK_P: 80,
+		DOM_VK_Q: 81,
+		DOM_VK_R: 82,
+		DOM_VK_S: 83,
+		DOM_VK_T: 84,
+		DOM_VK_U: 85,
+		DOM_VK_V: 86,
+		DOM_VK_W: 87,
+		DOM_VK_X: 88,
+		DOM_VK_Y: 89,
+		DOM_VK_Z: 90,
+		DOM_VK_CONTEXT_MENU: 93,
+		DOM_VK_NUMPAD0: 96,
+		DOM_VK_NUMPAD1: 97,
+		DOM_VK_NUMPAD2: 98,
+		DOM_VK_NUMPAD3: 99,
+		DOM_VK_NUMPAD4: 100,
+		DOM_VK_NUMPAD5: 101,
+		DOM_VK_NUMPAD6: 102,
+		DOM_VK_NUMPAD7: 103,
+		DOM_VK_NUMPAD8: 104,
+		DOM_VK_NUMPAD9: 105,
+		DOM_VK_MULTIPLY: 106,
+		DOM_VK_ADD: 107,
+		DOM_VK_SEPARATOR: 108,
+		DOM_VK_SUBTRACT: 109,
+		DOM_VK_DECIMAL: 110,
+		DOM_VK_DIVIDE: 111,
+		DOM_VK_F1: 112,
+		DOM_VK_F2: 113,
+		DOM_VK_F3: 114,
+		DOM_VK_F4: 115,
+		DOM_VK_F5: 116,
+		DOM_VK_F6: 117,
+		DOM_VK_F7: 118,
+		DOM_VK_F8: 119,
+		DOM_VK_F9: 120,
+		DOM_VK_F10: 121,
+		DOM_VK_F11: 122,
+		DOM_VK_F12: 123,
+		DOM_VK_F13: 124,
+		DOM_VK_F14: 125,
+		DOM_VK_F15: 126,
+		DOM_VK_F16: 127,
+		DOM_VK_F17: 128,
+		DOM_VK_F18: 129,
+		DOM_VK_F19: 130,
+		DOM_VK_F20: 131,
+		DOM_VK_F21: 132,
+		DOM_VK_F22: 133,
+		DOM_VK_F23: 134,
+		DOM_VK_F24: 135,
+		DOM_VK_NUM_LOCK: 144,
+		DOM_VK_SCROLL_LOCK: 145,
+		DOM_VK_COMMA: 188,
+		DOM_VK_PERIOD: 190,
+		DOM_VK_SLASH: 191,
+		DOM_VK_BACK_QUOTE: 192,
+		DOM_VK_OPEN_BRACKET: 219,
+		DOM_VK_BACK_SLASH: 220,
+		DOM_VK_CLOSE_BRACKET: 221,
+		DOM_VK_QUOTE: 222,
+		DOM_VK_META: 224
+	};
 }
 
 //
-// Audio
+// Sound.
 // 
 
-soundManager.url = 'lib/sm2/';
-// soundManager.useHTML5Audio = true;
+soundManager.url = "lib/sm2/";
 soundManager.useFlashBlock = false;
 soundManager.debugMode = false;
 
@@ -502,31 +811,41 @@ var soundstoplay = [];
 var audioready = false;
 
 soundManager.onready(function() {
-    const soundnames = 'bonus adjustangle bullseye adjustpower firecannon sink'.split(' ');
-    for (var i = 0; i < soundnames.length; i++) {
-        sounds[soundnames[i]] = soundManager.createSound({
-            id: 'sound'+i,
-            url: 'wav/'+soundnames[i]+'.mp3',
-            onload: function() {
-                console.log(this.url+' is ready to play');
-            },
-            // other options here..
-        });
-    }
-    audioready = true;
+	var soundnames = [
+		"bonus",
+		"adjustangle",
+		"bullseye",
+		"adjustpower",
+		"firecannon",
+		"sink",
+		"targetpop"
+	];
+	soundnames.forEach(function(name, i) {
+		sounds[name] = soundManager.createSound({
+			id: "sound"+i,
+			url: "wav/"+name+".mp3",
+			onload: function() {
+				// console.log(this.url+" is ready to play");
+			}
+			// other options here..
+		});
+	});
+	audioready = true;
 });
 
 soundManager.ontimeout(function() {
-    console.log("Hrmm, SM2 could not start.");
+	console.log("Hrmm, loading SM2 timed out.");
 });
 
 function push_multi_sound(s) {
-    soundstoplay.push(s);
+	if (!audioready)
+		return;
+	soundstoplay.push(s);
 }
 
 function play_all_multi_sound() {
-    for (var i = 0; i < soundstoplay.length; i++) {
-        sounds[soundstoplay[i]].play();
-    }
-    soundstoplay = [];
+	soundstoplay.forEach(function(sound) {
+		sounds[sound].play();
+	});
+	soundstoplay = [];
 }

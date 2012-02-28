@@ -11,64 +11,63 @@
 .hstable {
 }
 .hstable thead {
-    font-weight: bold;
+	font-weight: bold;
 }
 .hstable tbody tr:nth-child(odd) {
-    background-color: #ffffff;
+	background-color: #ffffff;
 }
 .hstable tbody tr:nth-child(even) {
-    background-color: #eeeeff;
+	background-color: #eeeeff;
 }
 td {
-    max-width: 165px;
-    overflow-x: hidden;
-    white-space: nowrap;
+	max-width: 165px;
+	overflow-x: hidden;
+	white-space: nowrap;
 }
 body {
-    font-family: "Trebuchet MS", Helvetica, sans-serif;
+	font-family: "Trebuchet MS", Helvetica, sans-serif;
 }
 -->
 </style>
 
-<script type="text/javascript" src="lib/jquery.1.4.2.min.js"></script>
+<script type="text/javascript" src="lib/jquery-1.7.min.js"></script>
 <script type="text/javascript" src="lib/modernizr-1.7.min.js"></script>
 <script type="text/javascript" src="lib/sm2/soundmanager2-nodebug-jsmin.js"></script>
-<script type="text/javascript" src="rgbcolor.js"></script>
+<script type="text/javascript" src="lib/Colour.js"></script>
+<!-- http://davidbau.com/archives/2010/01/30/random_seeds_coded_hints_and_quintillions.html -->
+<script type="text/javascript" src="lib/seedrandom-min.js"></script>
+
 <script type="text/javascript" src="util.js"></script>
 <script type="text/javascript" src="html5pane.js"></script>
 <script type="text/javascript" src="highscores.js"></script>
 <script type="text/javascript" src="hellocannon.js"></script>
-
-<audio id="bonus" src="wav/bonus.wav" preload="auto"></audio>
-<audio id="adjustangle" src="wav/adjustangle.wav" preload="auto"></audio>
-<audio id="bullseye" src="wav/bullseye.wav" preload="auto"></audio>
-<audio id="adjustpower" src="wav/adjustpower.wav" preload="auto"></audio>
-<audio id="firecannon" src="wav/firecannon.wav" preload="auto"></audio>
-<audio id="sink" src="wav/sink.wav" preload="auto"></audio>
 
 </head>
 
 <body bgcolor="#ffffff">
 
 <div id="game" style="float: left;">
-<canvas id="hellocannon" width=600 height=400>
+<canvas id="hellocannon">
 Your browser is not good enough for Hello Cannon. It's not you. It's your browser. Please use anything OTHER THAN Internet Explorer -- like Chrome or Firefox or Safari or Opera.
 </canvas>
 </div>
 
+<div id="game3d" style="float: left;">
+</div>
+
 <div id="highscores" style="float: left;">
-    <div id="namediv">
-        Enter your name for highscores:<br />
-        <input id="namefield" type="text" size="20" placeholder="Your name" maxlength="32" />
-    </div>
-    <div id="hslocal" class="hstable" style="float: left;"></div>
-    <div id="hsglobal" class="hstable" style="float: left;"></div>
+	<div id="namediv">
+		Enter your name for highscores:<br />
+		<input id="namefield" type="text" size="20" placeholder="Your name" maxlength="32" />
+	</div>
+	<div id="hslocal" class="hstable" style="float: left;"></div>
+	<div id="hsglobal" class="hstable" style="float: left;"></div>
 </div>
 
 <div id="instructions" style="clear: both;">
-    <b>HOW TO PLAY:</b><br />
-    Use arrow keys and press space bar to fire!<br />
-    Hit the targets for gold and eyes!!
+	<b>HOW TO PLAY:</b><br />
+	Use arrow keys, and then press space bar!<br />
+	Hit the targets for gold!!
 </div>
 
 <div id="html5"></div>
@@ -78,7 +77,9 @@ Your browser is not good enough for Hello Cannon. It's not you. It's your browse
 <script type="text/javascript">
 createHtml5Pane();
 initHighscores();
-initHellocannon();
+$(document).ready(function() {
+	initHellocannon();
+});
 </script>
 
 </body>
