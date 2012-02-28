@@ -16,9 +16,9 @@
 "use strict";
 
 // Debugging.
-var xShowFps = false;
-var xAlwaysTrajectory = false;
-var xAlwaysSink = false;
+var xShowFps = true;
+var xAlwaysTrajectory = true;
+var xAlwaysSink = true;
 var xBrowseLevels = false;
 var xLevelRedo = true;
 var xAlwaysShowPowerup = 0;
@@ -38,6 +38,7 @@ var xShowLevelSummary = false;
 var xFadeOutCashBubbles = false;
 var xIndividualCashBubbles = false;
 var xEyeSetScoreImmediate = true;
+var xArcheryColors = false;
 
 // UI.
 var gameCanvas;
@@ -89,7 +90,7 @@ var shotCost = 30;
 var starPowerLevels = 3;
 var eyePowerNumEyes = 4;
 var bigPowerNumShots = 4;
-var bigShotRadius = 16.0;
+var bigShotRadius = 20.0;
 var greenBalls = 4;
 var levelRedoMax = 10;
 var shineAngle = 3.8;
@@ -143,6 +144,7 @@ var singleTarget;
 function initHellocannon() {
 	Sound.setsounds([
 		"powerup",
+		"adjustangle",
 		"adjustangle",
 		"D3",
 		"G3",
@@ -645,7 +647,8 @@ function targetSize() {
 	var s = sizes.lastval(function(x) {
 		return x.level <= shots;
 	});
-	return { nRings: s.nRings * 2, ringWidth: s.ringWidth * 0.5 };
+	// return { nRings: s.nRings * 2, ringWidth: s.ringWidth * 0.5 };
+	return { nRings: s.nRings, ringWidth: s.ringWidth };
 }
 
 function computeRingCash(i, nRings) {
@@ -695,7 +698,7 @@ var LayerGame = Layer.extend({
 
 				// Draw cash.
 				setFont(18);
-				g.fillText(cash + "$", 250, 23);
+				g.fillText(cash + " $", 250, 23);
 				if (cash <= 0) {
 					g.fillStyle = "#d00";
 					g.fillText(cash, 250, 23);
@@ -1121,7 +1124,7 @@ var Shot = Gob.extend({
 		}
 		
 		// Glow.
-		var c = "#860";
+		var c = this.power ? "#860" : "#777";
 		var r = radius + 20;
 		var grad = g.createRadialGradient(0, 0, 0, 0, 0, r);
 		grad.addColorStop(0.0, c.alpha(0.8));
@@ -1190,26 +1193,10 @@ var Target = Gob.extend({
 				var w = 2;
 				var h = 20;
 				g.fillStyle = "#000";
-				g.fillPolygon([
-					[1, 0],
-					[h, w],
-					[h, -w]
-				]);
-				g.fillPolygon([
-					[0, 1],
-					[w, h],
-					[-w, h]
-				]);
-				g.fillPolygon([
-					[-1, 0],
-					[-h, w],
-					[-h, -w]
-				]);
-				g.fillPolygon([
-					[0, -1],
-					[w, -h],
-					[-w, -h]
-				]);
+				g.fillPolygon([ [ 1,  0], [ h,  w], [ h, -w] ]);
+				g.fillPolygon([ [ 0,  1], [ w,  h], [-w,  h] ]);
+				g.fillPolygon([ [-1,  0], [-h,  w], [-h, -w] ]);
+				g.fillPolygon([ [ 0, -1], [ w, -h], [-w, -h] ]);
 				g.restore();
 			}
 		}
@@ -1250,23 +1237,19 @@ var Target = Gob.extend({
 							particles.push(bub);
 						}
 					}
-					
-					if (i == 0) {
+					if (i == 0)
 						eyeHitMade(this.dx, this.dy);
-						Sound.push("G4");
-					}
-					else if (i == 2) {
-						Sound.push("D4");
-					}
-					else if (i == 4) {
-						Sound.push("B4");
-					}
-					else if (i == 6) {
-						Sound.push("G3");
-					}
-					else if (i == 8) {
-						Sound.push("D3");
-					}
+					var z = xArcheryColors ? 2 : 1;
+					var tones = table([
+						['num', 'tone'],
+						[0,     "G4"],
+						[1,     "D4"],
+						[2,     "B4"],
+						[3,     "G3"],
+						[4,     "D3"],
+					]);
+					if ((i * z) % 2 == 0)
+						Sound.push(tones[i * z / 2]['tone']);
 				}
 			}, this);
 		}
@@ -1282,22 +1265,31 @@ var Target = Gob.extend({
 var Ring = Gob.extend({
 	init: function() {
 		this.timeHit = undefined;
+		//this.hitColor = hue(rand()).shiftColor("#fff", rand() * 0.5);
+		this.hitColor = hue(rand());
 	},
 	
 	draw: function(number, ringWidth) {
 		var FADE_TIME = 900;
-		var overlap = 1.5;
-		var outline = ringWidth * 0.13 + 0.5;
+		var overlap = xArcheryColors ? 1.5 : -3;
+		var outline = xArcheryColors ? ringWidth * 0.13 + 0.5 : 0;
+		var width = xArcheryColors ? ringWidth + overlap - outline * 0.5 : ringWidth * 0.5;
+		var radius = xArcheryColors ? ringWidth * (number + 0.5) - outline * 0.5 : ringWidth * (number + 0.25);
 		if (this.timeHit == undefined) {
-			setLine(ringWidth + overlap - outline * 0.5, targetcolors[Math.floor(number / 2)]);
-			g.strokeCircle(0, 0, ringWidth * number - overlap * 0.5 - outline * 0.25);
-			setLine(outline, "#000");
-			g.strokeCircle(0, 0, ringWidth * (number + 0.5) - outline * 0.5);
+			var color = xArcheryColors ? targetcolors[Math.floor(number / 2)] : true ? "#000" : grad;
+			setLine(width, color);
+			g.strokeCircle(0, 0, radius);
+			// Draw outline.
+			if (xArcheryColors) {
+				setLine(outline, "#fff");
+				g.strokeCircle(0, 0, ringWidth * (number + 0.5) - outline * 0.5);
+			}
 		}
 		else if (tms - this.timeHit < FADE_TIME) {
 			var alpha = 1.0 - ((tms - this.timeHit) / FADE_TIME);
-			setLine(ringWidth + overlap, "#fff".alpha(alpha));
-			g.strokeCircle(0, 0, ringWidth * number - overlap * 0.5);
+			var color = xArcheryColors ? "#fff" : "#fff".shiftColor(this.hitColor, alpha);
+			setLine(width, color.alpha(alpha));
+			g.strokeCircle(0, 0, radius);
 		}
 		else {
 			return; // Ring is destroyed and finished animating.
@@ -1422,7 +1414,7 @@ var Powerup = Gob.extend({
 				this.extra.pickup();
 				Sound.push("powerup");
 				this.extra = null;
-			}
+			} // TODO Cannot clal pickup of null.
 		}
 	}
 });
@@ -1569,7 +1561,7 @@ var PowerupBigSet = Gob.extend({
 var PowerupBig = Gob.extend({
 	init: function(parent) {
 		this.parent = parent;
-		this.smallR = bigShotRadius;
+		this.smallR = parent.radius * 0.2;
 		var radius = parent.radius;
 		this.bigR = radius;
 		var rs = this.bigR - this.smallR;
@@ -1784,7 +1776,7 @@ var CashBubble = Gob.extend({
 			bounds,
 			function() {
 				if (this.special) {
-					var color = this.amount > 0 ? "#0d0" : "#d00";
+					var color = this.amount > 0 ? "#15d015" : "#d01515";
 					setFont(18, color, "center");
 					setLine(5, "#000", "round");
 					g.strokeAndFillText(withSign(this.amount), 0, 0);
