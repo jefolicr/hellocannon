@@ -1,6 +1,12 @@
 //
-// My library of simple reuseable code.
+// My library of reuseable code.
 //
+
+var isfunction = _.isFunction;
+var isnumber = _.isNumber;
+var range = _.range;
+var undef = undefined;
+function isundef(obj) { return _.isUndefined(obj); };
 
 //
 // Class
@@ -30,8 +36,8 @@
 		// Copy the properties over onto the new prototype
 		for (var name in prop) {
 			// Check if we're overwriting an existing function
-			prototype[name] = typeof prop[name] == "function" && 
-				typeof _super[name] == "function" && fnTest.test(prop[name]) ?
+			prototype[name] = isfunction(prop[name]) && 
+				isfunction(_super[name]) && fnTest.test(prop[name]) ?
 				(function(name, fn) {
 					return function() {
 						var tmp = this._super;
@@ -71,157 +77,130 @@
 	};
 })();
 
-// Copies properties to class prototype. DOES NOT COPY if already defined by class.
 function appendtoclass(c, prop) {
-	var proto = c.prototype;
-	for (var name in prop) {
-		if (!proto[name]) {
-			proto[name] = prop[name];
-		}
-	}
+	_.extend(c.prototype, prop);
 }
 
 //
 // Iteration
 //
 
-// Copied from https://developer.mozilla.org/en/JavaScript/Reference/Global_Objects/Array/forEach
-
 appendtoclass(Array, {
-
-	forEach: function(fun /*, thisArg */) {
-		"use strict";
-	 
-		if (this == null)
-			throw new TypeError('can not convert ' + this + ' to object');
-	 
-		var t = Object(this);
-		var len = t.length >>> 0;
-		if (typeof fun != 'function')
-			throw new TypeError(fun + ' is not callable');
-	 
-		var thisArg = arguments[1];
-		for (var i = 0; i < len; i++) {
-			if (i in t)
-				fun.call(thisArg, t[i], i, t);
-		}
+	any: function(fun, obj) {
+		return _.any(this, fun, obj);
 	},
 	
-	lastval: function(fun /*, thisArg */) {
-		var t = this;
-		var thisArg = arguments[1];
-		for (var i = t.length; i-- > 0; ) {
-			if (fun.call(thisArg, t[i], i, t))
-				return t[i];
-		}
-		return null;
+	invoke: function(fun, obj) {
+		return _.invoke(this, fun, obj);
+	},
+	
+	each: function(fun, obj) {
+		return _.each(this, fun, obj);
+	},
+	
+	map: function(fun, obj) {
+		return _.map(this, fun, obj);
 	},
 
-	indexOf: function(object) {
-		var i = this.length;
-		while (i--) {
-			if (this[i] === object)
-				break;
+	indexof: function(val) {
+		return _.indexOf(this, val);
+	},
+	
+	eachr: function(fun, obj) {
+		var t = this;
+		var i = t.length;
+		while (i-- > 0)
+			fun.call(obj, t[i], i, t);
+	},
+	
+	findr: function(fun, obj) {
+		var t = this;
+		var i = t.length;
+		while (i-- > 0) {
+			if (fun.call(obj, t[i], i, t))
+				return t[i];
 		}
-		return i;
+		return undef;
 	},
 
 	remove: function(object) {
-		var i = this.indexOf(object);
+		var i = this.indexof(object);
 		return (~i)
 			? this.splice(i, 1)[0]
-			: undefined;
+			: undef;
 	}
 });
 
-function forNum(num, fun /*, thisArg */) {
-	var thisArg = arguments[2];
-	while (--num >= 0)
-		fun.call(thisArg, num);
-}
+times = _.times;
+keys = _.keys;
 
 function table(tab) {
 	var rows = [];
-	var header = tab.shift();
-	tab.forEach(function(v) {
+	var header = keys(tab.shift());
+	return tab.map(function(v) {
 		var row = {};
-		header.forEach(function(c, i) {
+		header.each(function(c, i) {
 			row[c] = v[i];
 		});
-		rows.push(row);
+		return row;
 	});
-	return rows;
+}
+
+function firstdef() {
+	return _.find(arguments, function(v) {
+		return !isundef(v);
+	});
 }
 
 //
-// Misc.
+// Time.
 //
-
-function firstdefined() {
-	var v, len = arguments.length;
-	for (var i = 0; i < len; i++) {
-		v = arguments[i];
-		if (typeof v != 'undefined')
-			return v;
-	}
-	return undefined;
-}
-
-function sign(x) {
-	return (x < 0) ? -1 : 1;
-}
-
-function cart(ang /*, mag = 1 */) {
-	var mag = firstdefined(arguments[1], 1);
-	return [mag * Math.cos(ang), mag * Math.sin(ang)];
-}
-
-function randInt(n) {
-	return Math.floor(Math.random() * n);
-}
-
-function rand() {
-	return Math.random();
-}
 
 function time() {
 	return new Date().getTime();
 }
 
-function fill(c, len) {
-	// Catch undefined or NaN or negative or zero or fraction less than 1.
-	if (len >= 1) {
-		var fill = new Array(len);
-		while (--len >= 0)
-			fill[len] = c;
-		return fill.join("");
-	}
-	return "";
+//
+// String.
+//
+
+function fill(len, c) {
+	// Fix undefined or NaN or negative or zero or fractions.
+	len = ~~len;
+	var v = [];
+	while (len-- > 0)
+		v[len] = c;
+	return v.join("");
 }
 
-function padl(s, c, newLength) {
-	return fill(c, newLength - s.length) + s;
+function lpad(s, newLength, c) {
+	s = ""+s;
+	return fill(newLength - s.length, c) + s;
 }
 
 function msToString(ms) {
 	ms = Math.floor(ms / 1000);
-	var s = ""+(ms % 60);
+	var s = (ms % 60);
 	ms = Math.floor(ms / 60);
-	s = (ms % 60)+":"+padl(s, "0", 2);
+	s = (ms % 60)+":"+lpad(s, 2, "0");
 	if (ms < 60)
 		return s;
 	ms = Math.floor(ms / 60);
-	s = (ms % 60)+":"+padl(s, "0", 5);
+	s = (ms % 60)+":"+lpad(s, 5, "0");
 	if (ms < 60)
 		return s;
 	ms = Math.floor(ms / 60);
-	s = (ms % 24)+":"+padl(s, "0", 8);
+	s = (ms % 24)+":"+lpad(s, 8, "0");
 	if (ms < 24)
 		return s;
 	ms = Math.floor(ms / 24);
 	s = ms+" days "+s;
 	return s;
 }
+
+//
+// Animation.
+//
 
 (function () {
 	// Courtasy of paulirish.com
@@ -241,10 +220,6 @@ function msToString(ms) {
 	})();
 })();
 
-//
-// Viewport dimensions.
-//
-
 // Copied from http://andylangton.co.uk/articles/javascript/get-viewport-size-javascript/
 function viewportSize() {
 	var viewportwidth;
@@ -252,7 +227,7 @@ function viewportSize() {
 
 	// the more standards compliant browsers (mozilla/netscape/opera/IE7) use window.innerWidth and window.innerHeight
 
-	if (typeof window.innerWidth != 'undefined')
+	if (!isundef(window.innerWidth))
 	{
 		viewportwidth = window.innerWidth,
 		viewportheight = window.innerHeight
@@ -260,9 +235,9 @@ function viewportSize() {
 
 	// IE6 in standards compliant mode (i.e. with a valid doctype as the first line in the document)
 
-	else if (typeof document.documentElement != 'undefined'
-		&& typeof document.documentElement.clientWidth !=
-		'undefined' && document.documentElement.clientWidth != 0)
+	else if (!isundef(document.documentElement)
+		&& !isundef(document.documentElement.clientWidth)
+		&& document.documentElement.clientWidth != 0)
 	{
 		viewportwidth = document.documentElement.clientWidth,
 		viewportheight = document.documentElement.clientHeight
@@ -280,7 +255,6 @@ function viewportSize() {
 		h: viewportheight
 	};
 }
-
 
 //
 // Color.
@@ -323,8 +297,7 @@ function viewportSize() {
 					parts = rgbaRe.exec(str);
 					this.a = parseFloat(parts[4]);
 				}
-				this.r = parseInt(parts[1], 10);
-				
+				this.r = parseInt(parts[1], 10);				
 				this.g = parseInt(parts[2], 10);
 				this.b = parseInt(parts[3], 10);
 			}
@@ -332,13 +305,14 @@ function viewportSize() {
 	});
 
 	this.rgb = function(r, g, b, a) {
-		var x = "rgba("+r+","+g+","+b+","+a+")";
-		return x;
+		// Very small values will convert to a string as "1e-7" or similar, which is not a valid alpha.
+		a = a < 0.000001 ? 0 : a;
+		return "rgba("+r+","+g+","+b+","+a+")";
 	}
 
 	this.hue = function(h) {
-		var ou = new HSVColour(h * 360, 100, 100);
-		return ou.getCSSIntegerRGB();
+		var c = new HSVColour(h * 360, 100, 100);
+		return c.getCSSIntegerRGB();
 	}
 	
 	appendtoclass(String, {
@@ -366,6 +340,25 @@ function viewportSize() {
 
 appendtoclass(CanvasRenderingContext2D, {
 
+	setFontFace: function(face, emphasis) {
+		this.defaultFontFace = face;
+		this.defaultFontEmphasis = emphasis;
+	},
+
+	setFontStyle: function(f, color /* = "#000" */, align /* = "left" */) {
+		this.font = (isnumber(f))
+			? this.defaultFontEmphasis + " " + f + "pt " + this.defaultFontFace
+			: f;
+		this.fillStyle = firstdef(color, "#000");
+		this.textAlign = firstdef(align, "left");
+	},
+
+	setLineStyle: function(width, color /* = "#000" */, cap /* = "butt" */) {
+		this.lineWidth = width;
+		this.strokeStyle = firstdef(color, "#000");
+		this.lineCap = firstdef(cap, "butt");
+	},
+
 	strokeAndFillText: function(text, x, y) {
 		this.strokeText(text, x, y);
 		this.fillText(text, x, y);
@@ -378,14 +371,9 @@ appendtoclass(CanvasRenderingContext2D, {
 		this.fillStyle = fsBackup;
 	},
 
-	ellipse: function(x, y, r1, r2) {
-		this.beginPath();
-		this.arc(x, y, radius, 0, Math.PI*2, false);
-	},
-
 	circle: function(x, y, radius) {
 		this.beginPath();
-		this.arc(x, y, radius, 0, Math.PI*2, false);
+		this.arc(x, y, radius, 0, Math.TAU, false);
 	},
 
 	fillCircle: function(x, y, radius) {
@@ -435,7 +423,7 @@ appendtoclass(CanvasRenderingContext2D, {
 			return;
 		this.beginPath();
 		this.moveTo(points[0][0], points[0][1]);
-		points.forEach(function(p) {
+		points.each(function(p) {
 			this.lineTo(p[0], p[1]);
 		}, this);
 	},
@@ -470,7 +458,13 @@ var Renderable = Class.extend({
 		this.layer = layer;
 		this.key = "";
 		this.useCanvas = true;
-		this.keyRendered = undefined;
+		this.keyRendered = undef;
+		
+		// Renderables appear blurry unless they are cached on 
+		// canvases which are scaled by the same amount as the
+		// window so that the cache image is not up or down 
+		// sampled when drawn.
+		this.focus = Renderable.prototype.scaleOfAreaToDeviceForFocus || 1.0;
 	},
 	
 	draw: function(x, y) {
@@ -479,27 +473,22 @@ var Renderable = Class.extend({
 			return;
 		}
 		
-		// Renderables appear blurry unless they are cached on 
-		// canvases which are scaled by the same amount as the
-		// window so that the cache image is not up or down 
-		// sampled when drawn.
-		var scale = Renderable.prototype.scaleOfAreaToDeviceForFocus || 1.0;
-		
 		var bounds = this.bounds;
 		var canvas = this.canvas;
-		var gBackup = g;
 		var spacing = 1.0
 		var ox = bounds.x - spacing;
 		var oy = bounds.y - spacing;
-		if (canvas == undefined) {
+		if (isundef(canvas)) {
 			canvas = document.createElement("canvas");
 			this.canvas = canvas;
-			canvas.width = Math.ceil(scale * bounds.w + 2 * spacing);
-			canvas.height = Math.ceil(scale * bounds.h + 2 * spacing);
+			canvas.width = Math.ceil(this.focus * bounds.w + 2 * spacing);
+			canvas.height = Math.ceil(this.focus * bounds.h + 2 * spacing);
 		}
 		if (this.keyRendered != this.key) {
+			var gBackup = g;
 			g = canvas.getContext("2d");
-			if (this.keyRendered != undefined) {
+			g.setFontFace(gBackup.defaultFontFace, gBackup.defaultFontEmphasis);
+			if (!isundef(this.keyRendered)) {
 				g.clearRect(0, 0, canvas.width, canvas.height);
 			}
 			if (Renderable.prototype.drawCanvasBoundingBox) {
@@ -507,7 +496,7 @@ var Renderable = Class.extend({
 				g.strokeRect(0, 0, canvas.width, canvas.height);
 			}
 			g.save();
-			g.scale(scale, scale);
+			g.scale(this.focus, this.focus);
 			g.translate(-ox, -oy);
 			this.render.call(this.layer);
 			this.keyRendered = this.key;
@@ -515,10 +504,10 @@ var Renderable = Class.extend({
 			g = gBackup;
 		}
 		g.save();
-		var elacs = 1.0 / scale;
-		g.translate(ox, oy);
+		var elacs = 1.0 / this.focus;
+		g.translate(ox + x, oy + y);
 		g.scale(elacs, elacs);
-		g.drawImage(canvas, x, y);
+		g.drawImage(canvas, 0, 0);
 		g.restore();
 	}
 });
@@ -527,40 +516,56 @@ var Renderable = Class.extend({
 // Math.
 //
 
+Math.TAU = Math.PI * 2;
+
+// TODO: Consider making this return 0 if 0 for consistency with what's expected.
+function sign(x) {
+	return (x < 0) ? -1 : 1;
+}
+
+function randInt(n) {
+	return Math.floor(Math.random() * n);
+}
+
+function rand() {
+	return Math.random();
+}
+
+function bind(x, min, max) {
+	return Math.min(Math.max(x, min), max);
+}
+
 function translate(array, tx, ty) {
-	var i = array.length;
-	var v;
-	while (i-- > 0) {
-		v = array[i];
+	array.each(function(v) {
 		v[0] += tx;
 		v[1] += ty;
-	}
+	});
+	return array;
 }
 
 function rotate(array, ra) {
 	var p = cart(ra);
-	var i = array.length;
-	var v;
-	while (i-- > 0) {
-		v = array[i];
-		v[0] = v[0] * p[0] - v[1] * p[1];
-		v[1] = v[0] * p[1] + v[1] * p[0];
-	}
+	var c = p[0], s = p[1];
+	var x;
+	array.each(function(v) {
+		x = v[0] * c - v[1] * s;
+		v[1] = v[0] * s + v[1] * c;
+		v[0] = x;
+	});
+	return array;
 }
 
 function scale(array, sx, sy) {
-	var i = array.length;
-	var v;
-	while (i-- > 0) {
-		v = array[i];
+	array.each(function(v) {
 		v[0] *= sx;
 		v[1] *= sy;
-	}
+	});
+	return array;
 }
 
-function minimize(fun, min, max /*, precision, initialGuess */) {
-	var precision = firstdefined(arguments[3], 0.00001);
-	var initialGuess = firstdefined(arguments[4], min + (max - min) * 0.41421);
+function minimize(fun, min, max, precision /* = 0.00001 */, initialGuess /* = near the middle */) {
+	precision = firstdef(precision, 0.00001);
+	initialGuess = firstdef(initialGuess, min + (max - min) * 0.41421);
 	
 	if (min > initialGuess || initialGuess > max) {
 		throw "Failed assertion: min < initialGuess < max: "+min+" < "+initialGuess+" < "+max;
@@ -612,13 +617,13 @@ function minimize(fun, min, max /*, precision, initialGuess */) {
 function createStar(x, y, r1, r2, rotation, numPoints) {
 	var points = [];
 	var angle = rotation;
-	var angleInc = Math.PI / numPoints;
-	for (var i = numPoints; i-- > 0; ) {
+	var angleInc = Math.TAU * 0.5 / numPoints;
+	times(numPoints, function() {
 		points.push(cart(angle, r2));
 		angle += angleInc;
 		points.push(cart(angle, r1));
 		angle += angleInc;
-	}
+	});
 	translate(points, x, y);
 	return points;
 }
@@ -641,7 +646,7 @@ function intersectLines(x1, y1, x2, y2,
 	var y2y1 = y2 - y1;
 	var den = yByA * x2x1 - xBxA * y2y1;
 	if (den == 0)
-		return null;
+		return undef;
 
 	var y1yA = y1 - yA;
 	var x1xA = x1 - xA;
@@ -667,6 +672,15 @@ function normal(dx, dy) {
 
 function mag(dx, dy) {
 	return Math.sqrt(dx * dx + dy * dy);
+}
+
+function cart(ang, mag /* = 1 */) {
+	mag = firstdef(mag, 1);
+	return [mag * Math.cos(ang), mag * Math.sin(ang)];
+}
+
+function polar(x, y) {
+	return [atan2(y, x), mag(x, y)];
 }
 
 function sqr(dx, dy) {
@@ -757,7 +771,7 @@ function segEllipsePoint(a, b, x1, y1) {
 // Copied from http://stackoverflow.com/questions/1465374/javascript-event-keycode-varants
 //
 
-if (typeof KeyEvent == "undefined") {
+if (isundef(KeyEvent)) {
 	var KeyEvent = {
 		DOM_VK_CANCEL: 3,
 		DOM_VK_HELP: 6,
@@ -913,7 +927,7 @@ var Sound = (function() {
 			if (!audioready) {
 				return;
 			}
-			soundstoload.forEach(function(name, i) {
+			soundstoload.each(function(name, i) {
 				sounds[name] = soundManager.createSound({
 					id: "sound"+i,
 					url: "wav/"+name+".mp3",
@@ -931,7 +945,7 @@ var Sound = (function() {
 		},
 		
 		playall: function() {
-			soundstoplay.forEach(function(sound) {
+			soundstoplay.each(function(sound) {
 				if (sounds[sound]) {
 					sounds[sound].play();
 				}
