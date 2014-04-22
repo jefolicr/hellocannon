@@ -11,6 +11,8 @@ var nameFieldValue;
 function initHighscores() {
 	var v = parseInt(localStorage.getItem('hellocannon-version'));
 	
+	if (v != 0 && v === 0)
+		console.log("ERROR: v != 0"+v);
 	if (v != 0) {
 		// Store highscore data default.
 		localStorage.clear();
@@ -33,11 +35,15 @@ function initHighscores() {
 
 function nameFieldUpdate() {
 	var name = document.getElementById('namefield').value;
+	if (name != nameFieldValue && name === nameFieldValue)
+		console.log("ERROR: name != nameFieldValue"+name + " " + nameFieldValue);
 	if (name != nameFieldValue) {
 		// Name changed.
 		nameFieldValue = name;
 		localStorage.setItem('playerName', name);
 	}
+	if (name != '' && name === '')
+		console.log("ERROR: name != ''"+name);
 	if (name != '') {
 		document.getElementById('namediv').style.border = '0px';
 	}
@@ -68,6 +74,8 @@ function updateHighscores() {
 			// alert("SUCCESS hsfetch.php {data: " + data + " textStatus: " + textStatus + " jqXHR: " + jqXHR + "}");
 			// console.log(data.length + ' ' + JSON.stringify(data));
 			
+			if (data == null && data !== null)
+				console.log("ERROR: data == null" + data);
 			if (data == null)
 				return;
 			scores = data;

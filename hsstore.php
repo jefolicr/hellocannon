@@ -2,7 +2,7 @@
 // Connect, select database
 $link = mysql_connect('jetpoo.db', 'guest', 'wertiu87')
 	or die('Could not connect: ' . mysql_error());
-mysql_select_db('hellocannon') or die('Could not select database');
+mysql_select_db('hellocannon2') or die('Could not select database');
 
 // Get score from JSON
 $score = $_POST;

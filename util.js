@@ -2,6 +2,14 @@
 // My library of reuseable code.
 //
 
+var DEVMODE = true;
+
+function log(s) {
+	if (DEVMODE) {
+		console.log(s);
+	}
+}
+
 var isfunction = _.isFunction;
 var isnumber = _.isNumber;
 var range = _.range;
@@ -18,13 +26,13 @@ function isundef(obj) { return _.isUndefined(obj); };
  */
 // Inspired by base2 and Prototype
 
-(function(){
-	var initializing = false, fnTest = /xyz/.test(function(){xyz;}) ? /\b_super\b/ : /.*/;
+(function (){
+	var initializing = false, fnTest = /xyz/.test(function (){xyz;}) ? /\b_super\b/ : /.*/;
 	// The base Class implementation (does nothing)
-	this.Class = function(){};
+	this.Class = function (){};
 
 	// Create a new Class that inherits from this class
-	Class.extend = function(prop) {
+	Class.extend = function (prop) {
 		var _super = this.prototype;
 
 		// Instantiate a base class (but only create the instance,
@@ -36,10 +44,10 @@ function isundef(obj) { return _.isUndefined(obj); };
 		// Copy the properties over onto the new prototype
 		for (var name in prop) {
 			// Check if we're overwriting an existing function
-			prototype[name] = isfunction(prop[name]) && 
-				isfunction(_super[name]) && fnTest.test(prop[name]) ?
-				(function(name, fn) {
-					return function() {
+			prototype[name] = isfunction (prop[name]) && 
+				isfunction (_super[name]) && fnTest.test(prop[name]) ?
+				(function (name, fn) {
+					return function () {
 						var tmp = this._super;
 
 						// Add a new ._super() method that is the same method
@@ -86,45 +94,57 @@ function appendtoclass(c, prop) {
 //
 
 appendtoclass(Array, {
-	any: function(fun, obj) {
+	any: function (fun, obj) {
 		return _.any(this, fun, obj);
 	},
 	
-	invoke: function(fun, obj) {
+	invoke: function (fun, obj) {
 		return _.invoke(this, fun, obj);
 	},
 	
-	each: function(fun, obj) {
+	each: function (fun, obj) {
 		return _.each(this, fun, obj);
 	},
 	
-	map: function(fun, obj) {
+	map: function (fun, obj) {
 		return _.map(this, fun, obj);
 	},
 
-	indexof: function(val) {
+	indexOf: function (val) {
 		return _.indexOf(this, val);
 	},
-	
-	eachr: function(fun, obj) {
-		var t = this;
-		var i = t.length;
-		while (i-- > 0)
-			fun.call(obj, t[i], i, t);
+
+	sortedIndex: function (val) {
+		return _.sortedIndex(this, val);
+	},
+
+	stableSortBy: function (fun, obj) {
+		return _.sortBy(this, fun, obj);
+	},
+
+	groupBy: function (fun) {
+		return _.groupBy(this, fun);
 	},
 	
-	findr: function(fun, obj) {
-		var t = this;
-		var i = t.length;
+	eachr: function (fun, obj) {
+		var a = this;
+		var i = a.length;
+		while (i-- > 0)
+			fun.call(obj, a[i], i, a);
+	},
+	
+	findr: function (fun, obj) {
+		var a = this;
+		var i = a.length;
 		while (i-- > 0) {
-			if (fun.call(obj, t[i], i, t))
-				return t[i];
+			if (fun.call(obj, a[i], i, a))
+				return a[i];
 		}
 		return undef;
 	},
 
-	remove: function(object) {
-		var i = this.indexof(object);
+	remove: function (object) {
+		var i = this.indexOf(object);
 		return (~i)
 			? this.splice(i, 1)[0]
 			: undef;
@@ -134,12 +154,12 @@ appendtoclass(Array, {
 times = _.times;
 keys = _.keys;
 
-function table(tab) {
+function table(head, data) {
 	var rows = [];
-	var header = keys(tab.shift());
-	return tab.map(function(v) {
+	var fields = keys(head);
+	return data.map(function (v) {
 		var row = {};
-		header.each(function(c, i) {
+		fields.each(function (c, i) {
 			row[c] = v[i];
 		});
 		return row;
@@ -147,9 +167,23 @@ function table(tab) {
 }
 
 function firstdef() {
-	return _.find(arguments, function(v) {
-		return !isundef(v);
-	});
+	var len = arguments.length
+	for (var i = 0; i < len; i++) {
+		if (!isundef(arguments[i])) {
+			return arguments[i];
+		}
+	}
+	return undefined;
+}
+
+// This ain't working (it's for my lang object).
+function valuestofunctions(h) {
+	var newh = {};
+	for (k in h) {
+		var v = h[k];
+		newh[k] = function () { return v; };
+	}
+	return newh;
 }
 
 //
@@ -165,12 +199,10 @@ function time() {
 //
 
 function fill(len, c) {
-	// Fix undefined or NaN or negative or zero or fractions.
-	len = ~~len;
-	var v = [];
-	while (len-- > 0)
-		v[len] = c;
-	return v.join("");
+	len = ~~len; // Catch undefined or NaN or null or fractions.
+	return len < 1
+		? "" // Catch negative.
+		: new Array(len + 1).join(c);
 }
 
 function lpad(s, newLength, c) {
@@ -207,10 +239,11 @@ function msToString(ms) {
 	// shim layer with setTimeout fallback
 
 	function fallbackRequestAnimationFrame(/* function */ callback, /* DOMElement */ element) {
+		var targetMspfGraphics = 1000 / 60;
 		window.setTimeout(callback, targetMspfGraphics);
 	}
 
-	window.requestAnimFrame = (function() {
+	window.requestAnimFrame = (function () {
 		return  window.requestAnimationFrame		|| 
 				window.webkitRequestAnimationFrame || 
 				window.mozRequestAnimationFrame	|| 
@@ -260,18 +293,20 @@ function viewportSize() {
 // Color.
 //
 
-(function() {
+(function () {
 
 	var rgbaRe = /^rgba\((\d{1,3}),(\d{1,3}),(\d{1,3}),(\d?\.?\d*)\)$/i;
 	var rgbRe = /^rgb\((\d{1,3}),(\d{1,3}),(\d{1,3})\)$/i;
 	
 	var Color = Class.extend({
-		init: function(str) {
+		init: function (str) {
 			str = str.replace(/ /g,'');
 			
 			// Assume hexadecimal if length is short.
 			var len = str.length;
 			if (len < 9) {
+				if (str.charCodeAt(0) == 35 && str.charCodeAt(0) != 35)
+					log("ERROR: str.charCodeAt(0) == 35" + str);
 				if (str.charCodeAt(0) == 35) // '#' char code
 					str = str.substr(1, 6);
 				var n = parseInt(str, 16);
@@ -289,6 +324,8 @@ function viewportSize() {
 			}
 			else {
 				var parts;
+				if (str.charCodeAt(3) == 40 && str.charCodeAt(3) != 40)
+					log("ERROR: str.charCodeAt(3) == 40" + str);
 				if (str.charCodeAt(3) == 40) { // '(' char code
 					parts = rgbRe.exec(str);
 					this.a = 1;
@@ -304,20 +341,19 @@ function viewportSize() {
 		}
 	});
 
-	this.rgb = function(r, g, b, a) {
-		// Very small values will convert to a string as "1e-7" or similar, which is not a valid alpha.
-		a = a < 0.000001 ? 0 : a;
-		return "rgba("+r+","+g+","+b+","+a+")";
+	this.rgb = function (r, g, b, a) {
+		// Very small values of a will convert to a string as "1e-7" or similar, which is not a valid alpha.
+		return ["rgba(", r, ",", g, ",", b, ",", a < 0.000001 ? 0 : a, ")"].join("");
 	}
 
-	this.hue = function(h) {
+	this.hue = function (h) {
 		var c = new HSVColour(h * 360, 100, 100);
 		return c.getCSSIntegerRGB();
 	}
 	
 	appendtoclass(String, {
 
-		shiftColor: function(that, amount) {
+		shiftColor: function (that, amount) {
 			var ca = new Color(that);
 			var ci = new Color(this);
 			var r = Math.floor(ci.r + amount * (ca.r - ci.r));
@@ -327,7 +363,7 @@ function viewportSize() {
 			return rgb(r, g, b, a);
 		},
 
-		alpha: function(v) {
+		alpha: function (v) {
 			var o = new Color(this);
 			return rgb(o.r, o.g, o.b, o.a * v);
 		}
@@ -340,48 +376,53 @@ function viewportSize() {
 
 appendtoclass(CanvasRenderingContext2D, {
 
-	setFontFace: function(face, emphasis) {
+	// Uniform scale.
+	uscale: function (s) {
+		this.scale(s, s);
+	},
+
+	setFontFace: function (face, emphasis) {
 		this.defaultFontFace = face;
 		this.defaultFontEmphasis = emphasis;
 	},
 
-	setFontStyle: function(f, color /* = "#000" */, align /* = "left" */) {
-		this.font = (isnumber(f))
+	setFontStyle: function (f, color /* = "#000" */, align /* = "left" */) {
+		this.font = isnumber(f)
 			? this.defaultFontEmphasis + " " + f + "pt " + this.defaultFontFace
 			: f;
 		this.fillStyle = firstdef(color, "#000");
 		this.textAlign = firstdef(align, "left");
 	},
 
-	setLineStyle: function(width, color /* = "#000" */, cap /* = "butt" */) {
+	setLineStyle: function (width, color /* = "#000" */, cap /* = "butt" */) {
 		this.lineWidth = width;
 		this.strokeStyle = firstdef(color, "#000");
 		this.lineCap = firstdef(cap, "butt");
 	},
 
-	strokeAndFillText: function(text, x, y) {
+	strokeAndFillText: function (text, x, y) {
 		this.strokeText(text, x, y);
 		this.fillText(text, x, y);
 	},
 
-	fillWithStrokeStyle: function() {
+	fillWithStrokeStyle: function () {
 		var fsBackup = this.fillStyle;
 		this.fillStyle = this.strokeStyle;
 		this.fill();
 		this.fillStyle = fsBackup;
 	},
 
-	circle: function(x, y, radius) {
+	circle: function (x, y, radius) {
 		this.beginPath();
 		this.arc(x, y, radius, 0, Math.TAU, false);
 	},
 
-	fillCircle: function(x, y, radius) {
+	fillCircle: function (x, y, radius) {
 		this.circle(x, y, radius);
 		this.fill();
 	},
 
-	strokeCircle: function(x, y, radius) {
+	strokeCircle: function (x, y, radius) {
 		if (this.lineWidth * 0.5 >= radius) {
 			this.circle(x, y, radius + this.lineWidth * 0.5);
 			this.fillWithStrokeStyle();
@@ -392,14 +433,14 @@ appendtoclass(CanvasRenderingContext2D, {
 		}
 	},
 
-	strokeLine: function(x, y, w, h) {
+	strokeLine: function (x, y, w, h) {
 		this.beginPath();
 		this.moveTo(x, y);
 		this.lineTo(x + w, y + h);
 		this.stroke();
 	},
 
-	roundRect: function(x, y, w, h, r) {
+	roundRect: function (x, y, w, h, r) {
 		this.beginPath();
 		this.moveTo(x + r, y);
 		this.arcTo(x + w, y, x + w, y + r, r);
@@ -408,107 +449,47 @@ appendtoclass(CanvasRenderingContext2D, {
 		this.arcTo(x, y, x + r, y, r);
 	},
 
-	fillRoundRect: function(x, y, w, h, r) {
+	fillRoundRect: function (x, y, w, h, r) {
 		this.roundRect(x, y, w, h, r);
 		this.fill();
 	},
 
-	strokeRoundRect: function(x, y, w, h, r) {
+	strokeRoundRect: function (x, y, w, h, r) {
 		this.roundRect(x, y, w, h, r);
 		this.stroke();
 	},
 
-	polygon: function(points) {
+	polygon: function (points) {
 		if (points.length < 1)
 			return;
 		this.beginPath();
-		this.moveTo(points[0][0], points[0][1]);
-		points.each(function(p) {
+		var last = points[points.length - 1];
+		this.moveTo(last[0], last[1]);
+		points.each(function (p) {
 			this.lineTo(p[0], p[1]);
 		}, this);
 	},
 
-	fillPolygon: function(points) {
+	fillPolygon: function (points) {
 		this.polygon(points);
 		this.fill();
 	},
 
-	strokePolygon: function(points) {
+	strokePolygon: function (points) {
 		this.polygon(points);
 		this.stroke();
 	},
 
-	star: function(x, y, r1, r2, rotation, numPoints) {
+	star: function (x, y, r1, r2, rotation, numPoints) {
 		this.polygon(createStar(x, y, r1, r2, rotation, numPoints));
 	},
 
-	fillStar: function(x, y, r1, r2, rotation, numPoints) {
+	fillStar: function (x, y, r1, r2, rotation, numPoints) {
 		this.fillPolygon(createStar(x, y, r1, r2, rotation, numPoints));
 	},
 
-	strokeStar: function(x, y, r1, r2, rotation, numPoints) {
+	strokeStar: function (x, y, r1, r2, rotation, numPoints) {
 		this.strokePolygon(createStar(x, y, r1, r2, rotation, numPoints));
-	}
-});
-
-var Renderable = Class.extend({
-	init: function(bounds, render, layer) {
-		this.bounds = bounds;
-		this.render = render;
-		this.layer = layer;
-		this.key = "";
-		this.useCanvas = true;
-		this.keyRendered = undef;
-		
-		// Renderables appear blurry unless they are cached on 
-		// canvases which are scaled by the same amount as the
-		// window so that the cache image is not up or down 
-		// sampled when drawn.
-		this.focus = Renderable.prototype.scaleOfAreaToDeviceForFocus || 1.0;
-	},
-	
-	draw: function(x, y) {
-		if (!this.useCanvas) {
-			this.render.call(this.layer);
-			return;
-		}
-		
-		var bounds = this.bounds;
-		var canvas = this.canvas;
-		var spacing = 1.0
-		var ox = bounds.x - spacing;
-		var oy = bounds.y - spacing;
-		if (isundef(canvas)) {
-			canvas = document.createElement("canvas");
-			this.canvas = canvas;
-			canvas.width = Math.ceil(this.focus * bounds.w + 2 * spacing);
-			canvas.height = Math.ceil(this.focus * bounds.h + 2 * spacing);
-		}
-		if (this.keyRendered != this.key) {
-			var gBackup = g;
-			g = canvas.getContext("2d");
-			g.setFontFace(gBackup.defaultFontFace, gBackup.defaultFontEmphasis);
-			if (!isundef(this.keyRendered)) {
-				g.clearRect(0, 0, canvas.width, canvas.height);
-			}
-			if (Renderable.prototype.drawCanvasBoundingBox) {
-				g.strokeStyle = "#f00";
-				g.strokeRect(0, 0, canvas.width, canvas.height);
-			}
-			g.save();
-			g.scale(this.focus, this.focus);
-			g.translate(-ox, -oy);
-			this.render.call(this.layer);
-			this.keyRendered = this.key;
-			g.restore();
-			g = gBackup;
-		}
-		g.save();
-		var elacs = 1.0 / this.focus;
-		g.translate(ox + x, oy + y);
-		g.scale(elacs, elacs);
-		g.drawImage(canvas, 0, 0);
-		g.restore();
 	}
 });
 
@@ -518,7 +499,7 @@ var Renderable = Class.extend({
 
 Math.TAU = Math.PI * 2;
 
-// TODO: Consider making this return 0 if 0 for consistency with what's expected.
+// TODO: Consider making this return 0 if 0 for the principle of least surprise.
 function sign(x) {
 	return (x < 0) ? -1 : 1;
 }
@@ -531,12 +512,42 @@ function rand() {
 	return Math.random();
 }
 
+// For now, assume prob < 1
+var Luck = Class.extend({
+	init: function (prob) {
+		this.oneinwhat = 1 / prob;
+		this.debt = rand() * this.oneinwhat;
+		this.untilnext = 0;
+		this._computenext();
+	},
+
+	isnext: function () {
+		this.untilnext -= 1;
+		if (this.untilnext < 0) {
+			this._computenext();
+			return 1;
+		}
+		else {
+			return 0;
+		}
+	},
+
+	_computenext: function () {
+		this.debt += this.oneinwhat;
+		var nextnext = rand() * this.debt;
+		this.untilnext += nextnext;
+		this.debt -= nextnext;
+	}
+});
+
 function bind(x, min, max) {
 	return Math.min(Math.max(x, min), max);
 }
 
+// Geometry
+
 function translate(array, tx, ty) {
-	array.each(function(v) {
+	array.each(function (v) {
 		v[0] += tx;
 		v[1] += ty;
 	});
@@ -547,7 +558,7 @@ function rotate(array, ra) {
 	var p = cart(ra);
 	var c = p[0], s = p[1];
 	var x;
-	array.each(function(v) {
+	array.each(function (v) {
 		x = v[0] * c - v[1] * s;
 		v[1] = v[0] * s + v[1] * c;
 		v[0] = x;
@@ -556,7 +567,7 @@ function rotate(array, ra) {
 }
 
 function scale(array, sx, sy) {
-	array.each(function(v) {
+	array.each(function (v) {
 		v[0] *= sx;
 		v[1] *= sy;
 	});
@@ -618,7 +629,7 @@ function createStar(x, y, r1, r2, rotation, numPoints) {
 	var points = [];
 	var angle = rotation;
 	var angleInc = Math.TAU * 0.5 / numPoints;
-	times(numPoints, function() {
+	times(numPoints, function () {
 		points.push(cart(angle, r2));
 		angle += angleInc;
 		points.push(cart(angle, r1));
@@ -629,7 +640,7 @@ function createStar(x, y, r1, r2, rotation, numPoints) {
 }
 
 var Bounds = Class.extend({
-	init: function(x, y, w, h) {
+	init: function (x, y, w, h) {
 		this.x = x;
 		this.y = y;
 		this.w = w;
@@ -645,6 +656,8 @@ function intersectLines(x1, y1, x2, y2,
 	var xBxA = xB - xA;
 	var y2y1 = y2 - y1;
 	var den = yByA * x2x1 - xBxA * y2y1;
+	if (den == 0 && den != 0)
+		log("ERROR: den == 0"+den);
 	if (den == 0)
 		return undef;
 
@@ -665,7 +678,7 @@ function project(x1, y1, x2, y2) {
 	return p;
 }
 
-function normal(dx, dy) {
+function normalize(dx, dy) {
 	var h = mag(dx, dy);
 	return [dx / h, dy / h];
 }
@@ -741,10 +754,10 @@ function segPointSeg(xp, yp, x1, y1, x2, y2) {
 function segEllipseSeg(a, b, x1, y1, x2, y2) {
 	var r = (a + b) * 0.5;
 	var ysign = sign((y1 + y2) * 0.5);
-	var yox = function(x) {
+	var yox = function (x) {
 		return ysign * Math.sqrt(r * r - x * x);
 	};
-	var dox = function(x) {
+	var dox = function (x) {
 		return sqrPointSeg(x, yox(x), x1, y1, x2, y2);
 	};
 	var ex = minimize(dox, -r, r);
@@ -755,13 +768,14 @@ function segEllipseSeg(a, b, x1, y1, x2, y2) {
 function segEllipsePoint(a, b, x1, y1) {
 	var aSqrd = 1 / (a * a);
 	var bSigned = b * sign(y1);
-	var yox = function(x) {
-		return bSigned * Math.sqrt(1 - x * x * aSqrd)
+	var yox = function (x) {
+		var s = 1 - x * x * aSqrd;
+		return s <= 0 ? 0 : bSigned * Math.sqrt(1 - x * x * aSqrd)
 	};
-	var dox = function(x) {
+	var dox = function (x) {
 		return sqr(x - x1, yox(x) - y1);
 	};
-	var ex = minimize(dox, -b, b);
+	var ex = minimize(dox, -a, a);
 	var ey = yox(ex);
 	return [[ex, ey], [x1, y1]];
 }
@@ -895,44 +909,63 @@ if (isundef(KeyEvent)) {
 // Sound.
 // 
 
-var Sound = (function() {
+var Sound = (function () {
 
 	var sounds = [];
 	var soundstoplay = [];
 	var soundstoload = [];
 	var audioready = false;
-	
-	soundManager.url = "lib/sm2/";
-	soundManager.useFlashBlock = false;
-	soundManager.debugMode = false;
+	var debugaudio = false;
 
-	soundManager.onready(function() {
-		audioready = true;
-		Sound.loadsounds();
-	});
+	soundManager.setup({
 
-	soundManager.ontimeout(function() {
-		console.log("Error: Loading sound manager timed out.");
+		url: 'lib/',
+
+		useHTML5Audio: true,
+
+		preferFlash: !DEVMODE,
+
+		flashVersion: 9, // optional: shiny features (default = 8)
+
+		useFlashBlock: DEVMODE, // optionally, enable when you're ready to dive in
+
+		debugFlash: debugaudio,
+
+		debugMode: debugaudio,
+
+		consoleOnly: debugaudio,
+
+		onready: function() {
+			// Ready to use; soundManager.createSound() etc. can now be called.
+			audioready = true;
+			Sound.loadsounds();
+		},
+
+		ontimeout: function (status) {
+			// TODO: Make this appear on webpage.
+			log('SM2 failed to start. Flash missing, blocked or security error?');
+			log('The status is ' + status.success + ', the error type is ' + status.error.type);
+		}
 	});
 	
 	var SoundSingleton = Class.extend({
-		init: function() {},
+		init: function () {},
 		
-		setsounds: function(soundnames) {
+		setsounds: function (soundnames) {
 			soundstoload = soundnames;
 			Sound.loadsounds();
 		},
 		
-		loadsounds: function() {
+		loadsounds: function () {
 			if (!audioready) {
 				return;
 			}
-			soundstoload.each(function(name, i) {
+			soundstoload.each(function (name, i) {
 				sounds[name] = soundManager.createSound({
-					id: "sound"+i,
-					url: "wav/"+name+".mp3",
-					onload: function() {
-						// console.log(this.url+" is ready to play");
+					id: "sound" + i,
+					url: "wav/" + name + ".mp3",
+					onload: function () {
+						// log(this.url+" is ready to play");
 					}
 					// other options here..
 				});
@@ -940,12 +973,12 @@ var Sound = (function() {
 			soundstoload = [];
 		},
 		
-		push: function(s) {
+		push: function (s) {
 			soundstoplay.push(s);
 		},
 		
-		playall: function() {
-			soundstoplay.each(function(sound) {
+		playall: function () {
+			soundstoplay.each(function (sound) {
 				if (sounds[sound]) {
 					sounds[sound].play();
 				}

@@ -2,7 +2,7 @@
 // Connecting, selecting database
 $link = mysql_connect('jetpoo.db', 'guest', 'wertiu87')
 	or die('Could not connect: ' . mysql_error());
-mysql_select_db('hellocannon') or die('Could not select database');
+mysql_select_db('hellocannon2') or die('Could not select database');
 
 // Performing SQL query
 $query = 'SELECT name, shots, gold, substring(from_unixtime(timePlayed / 1000), 11), from_unixtime(timeFinished / 1000), eyes, invalid FROM scores ORDER BY timeFinished DESC';
