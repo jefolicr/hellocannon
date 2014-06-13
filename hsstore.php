@@ -13,7 +13,7 @@ $score = $_POST;
 $timePosted = time(); // timestamp in seconds
 $timeFinished = gmp_init($score["timeFinished"], 10);
 $name = preg_replace('/[^a-zA-Z0-9_ ]/', "", substr($score["name"], 0, 32));
-//  html: 
+//  html:
 // mysql: mysql_real_escape_string
 $timePlayed = (int) $score["timePlayed"];
 $eyes = (int) $score["eyes"];
@@ -23,8 +23,8 @@ $shots = (int) $score["shots"];
 // Perform sanity checks to discourage hacking
 $timeFinishedSeconds = gmp_intval(gmp_div($timeFinished, gmp_init(1000)));
 $invalid = "1";
-if (($eyes <= $shots) and 
-	($gold + 350 > $shots * 55) and 
+if (($eyes <= $shots) and
+	($gold + 350 > $shots * 55) and
 	($timePosted - 90 < $timeFinishedSeconds) and // less than 1.5 minute delay in posting score
 	($timePlayed / $shots > 2400)) // greater than 2.4 seconds per shot
 {

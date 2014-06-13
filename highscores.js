@@ -10,7 +10,7 @@ var nameFieldValue;
 
 function initHighscores() {
 	var v = parseInt(localStorage.getItem('hellocannon-version'));
-	
+
 	if (v != 0 && v === 0)
 		console.log("ERROR: v != 0"+v);
 	if (v != 0) {
@@ -22,9 +22,9 @@ function initHighscores() {
 		localStorage.setItem('scores', JSON.stringify(hs));
 		localStorage.setItem('playerName', '');
 	}
-	
+
 	updateHighscores();
-	
+
 	nameFieldValue = localStorage.getItem('playerName');
 	document.getElementById('namefield').value = nameFieldValue;
 	document.getElementById('namefield').onchange = nameFieldUpdate;
@@ -59,10 +59,10 @@ function updateHighscores() {
 		var score = scores[i];
 		s = s+'<tr><td>'+score.shots+' shots</td><td>'+score.name+'</td></tr>';
 	}
-	var title = 'Personal Highscores'; // overflow-x: visible; 
+	var title = 'Personal Highscores'; // overflow-x: visible;
 	s = '<table><thead><tr><td colspan="2">'+title+':</td></tr></thead><tbody>'+s+'</tbody></table>';
 	document.getElementById('hslocal').innerHTML = s;
-	
+
 	// Redraw global highscores.
 	var data = JSON.stringify({ 'start': 0, 'length': maxScores });
 	jQuery.ajax({
@@ -73,13 +73,13 @@ function updateHighscores() {
 		success: function(data, textStatus, jqXHR) {
 			// alert("SUCCESS hsfetch.php {data: " + data + " textStatus: " + textStatus + " jqXHR: " + jqXHR + "}");
 			// console.log(data.length + ' ' + JSON.stringify(data));
-			
+
 			if (data == null && data !== null)
 				console.log("ERROR: data == null" + data);
 			if (data == null)
 				return;
 			scores = data;
-			
+
 			// Create html table.
 			var s = '';
 			var title = 'World Highscores';
@@ -98,7 +98,7 @@ function updateHighscores() {
 }
 
 function addGameScore(score) {
-	
+
 	// Store new score locally.
 	var hs = JSON.parse(localStorage.getItem('scores'));
 	var scores = hs.scores;
@@ -112,7 +112,7 @@ function addGameScore(score) {
 	if (scores.length > maxScores)
 		scores.pop();
 	localStorage.setItem('scores', JSON.stringify(hs));
-	
+
 	// Store new score globally.
 	var data = score;
 	jQuery.ajax({
@@ -127,7 +127,7 @@ function addGameScore(score) {
 			console.log("ERROR hsstore.php {data: " + data + " textStatus: " + textStatus + " jqXHR: " + jqXHR + "}");
 		},
 	});
-	
+
 	// Redraw highscores.
 	updateHighscores();
 }

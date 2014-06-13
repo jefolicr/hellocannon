@@ -44,7 +44,7 @@ function isundef(obj) { return _.isUndefined(obj); };
 		// Copy the properties over onto the new prototype
 		for (var name in prop) {
 			// Check if we're overwriting an existing function
-			prototype[name] = isfunction (prop[name]) && 
+			prototype[name] = isfunction (prop[name]) &&
 				isfunction (_super[name]) && fnTest.test(prop[name]) ?
 				(function (name, fn) {
 					return function () {
@@ -56,7 +56,7 @@ function isundef(obj) { return _.isUndefined(obj); };
 
 						// The method only need to be bound temporarily, so we
 						// remove it when we're done executing
-						var ret = fn.apply(this, arguments);        
+						var ret = fn.apply(this, arguments);
 						this._super = tmp;
 
 						return ret;
@@ -97,15 +97,15 @@ appendtoclass(Array, {
 	any: function (fun, obj) {
 		return _.any(this, fun, obj);
 	},
-	
+
 	invoke: function (fun, obj) {
 		return _.invoke(this, fun, obj);
 	},
-	
+
 	each: function (fun, obj) {
 		return _.each(this, fun, obj);
 	},
-	
+
 	map: function (fun, obj) {
 		return _.map(this, fun, obj);
 	},
@@ -125,14 +125,14 @@ appendtoclass(Array, {
 	groupBy: function (fun) {
 		return _.groupBy(this, fun);
 	},
-	
+
 	eachr: function (fun, obj) {
 		var a = this;
 		var i = a.length;
 		while (i-- > 0)
 			fun.call(obj, a[i], i, a);
 	},
-	
+
 	findr: function (fun, obj) {
 		var a = this;
 		var i = a.length;
@@ -244,11 +244,11 @@ function msToString(ms) {
 	}
 
 	window.requestAnimFrame = (function () {
-		return  window.requestAnimationFrame		|| 
-				window.webkitRequestAnimationFrame || 
-				window.mozRequestAnimationFrame	|| 
-				window.oRequestAnimationFrame	  || 
-				window.msRequestAnimationFrame	 || 
+		return  window.requestAnimationFrame		||
+				window.webkitRequestAnimationFrame ||
+				window.mozRequestAnimationFrame	||
+				window.oRequestAnimationFrame	  ||
+				window.msRequestAnimationFrame	 ||
 				fallbackRequestAnimationFrame;
 	})();
 })();
@@ -297,11 +297,11 @@ function viewportSize() {
 
 	var rgbaRe = /^rgba\((\d{1,3}),(\d{1,3}),(\d{1,3}),(\d?\.?\d*)\)$/i;
 	var rgbRe = /^rgb\((\d{1,3}),(\d{1,3}),(\d{1,3})\)$/i;
-	
+
 	var Color = Class.extend({
 		init: function (str) {
 			str = str.replace(/ /g,'');
-			
+
 			// Assume hexadecimal if length is short.
 			var len = str.length;
 			if (len < 9) {
@@ -334,7 +334,7 @@ function viewportSize() {
 					parts = rgbaRe.exec(str);
 					this.a = parseFloat(parts[4]);
 				}
-				this.r = parseInt(parts[1], 10);				
+				this.r = parseInt(parts[1], 10);
 				this.g = parseInt(parts[2], 10);
 				this.b = parseInt(parts[3], 10);
 			}
@@ -350,7 +350,7 @@ function viewportSize() {
 		var c = new HSVColour(h * 360, 100, 100);
 		return c.getCSSIntegerRGB();
 	}
-	
+
 	appendtoclass(String, {
 
 		shiftColor: function (that, amount) {
@@ -577,18 +577,18 @@ function scale(array, sx, sy) {
 function minimize(fun, min, max, precision /* = 0.00001 */, initialGuess /* = near the middle */) {
 	precision = firstdef(precision, 0.00001);
 	initialGuess = firstdef(initialGuess, min + (max - min) * 0.41421);
-	
+
 	if (min > initialGuess || initialGuess > max) {
 		throw "Failed assertion: min < initialGuess < max: "+min+" < "+initialGuess+" < "+max;
 	}
-	
+
 	if (precision <= 0) {
 		throw "Failed assertion: precision > 0: "+precision+" > 0";
 	}
-	
+
 	var gprev, fungprev;
 	var gnext, fungnext;
-	
+
 	gprev = initialGuess;
 	fungprev = fun(gprev);
 
@@ -597,7 +597,7 @@ function minimize(fun, min, max, precision /* = 0.00001 */, initialGuess /* = ne
 		if (gprev - min < max - gprev) {
 			gnext = (gprev + max) * 0.5;
 			fungnext = fun(gnext);
-		
+
 			if (fungnext < fungprev) {
 				min = gprev;
 				gprev = gnext;
@@ -610,7 +610,7 @@ function minimize(fun, min, max, precision /* = 0.00001 */, initialGuess /* = ne
 		else {
 			gnext = (gprev + min) * 0.5;
 			fungnext = fun(gnext);
-		
+
 			if (fungnext < fungprev) {
 				max = gprev;
 				gprev = gnext;
@@ -621,7 +621,7 @@ function minimize(fun, min, max, precision /* = 0.00001 */, initialGuess /* = ne
 			}
 		}
 	}
-	
+
 	return (max + min) * 0.5;
 }
 
@@ -647,7 +647,7 @@ var Bounds = Class.extend({
 		this.h = h;
 	}
 });
-    
+
 function intersectLines(x1, y1, x2, y2,
                         xA, yA, xB, yB)
 	{
@@ -720,12 +720,12 @@ function sqrPointSeg(xp, yp, x1, y1, x2, y2) {
 	// then return distance to that endpoint.
 	if (dot(x1, y1, x2, y2, xp, yp) > 0)
 		return sqr(x2 - xp, y2 - yp);
-	
+
 	// If point lies beyond line segment endpoint (x1, y1),
 	// then return distance to that endpoint.
 	if (dot(x2, y2, x1, y1, xp, yp) > 0)
 		return sqr(x1 - xp, y1 - yp);
-	
+
 	// Otherwise, return distance to line.
 	var d = cross(xp, yp, x2, y2, x1, y1) / mag(x2 - x1, y2 - y1);
 	return d * d;
@@ -737,12 +737,12 @@ function segPointSeg(xp, yp, x1, y1, x2, y2) {
 	// then return segment to that endpoint.
 	if (dot(x1, y1, x2, y2, xp, yp) > 0)
 		return [[xp, yp], [x2, y2]];
-	
+
 	// If point lies beyond line segment endpoint (x1, y1),
 	// then return segment to that endpoint.
 	if (dot(x2, y2, x1, y1, xp, yp) > 0)
 		return [[xp, yp], [x1, y1]];
-	
+
 	// Otherwise, return shortest segment to line.
 	var dx = x2 - x1;
 	var dy = y2 - y1;
@@ -888,7 +888,7 @@ if (isundef(KeyEvent)) {
 		DOM_VK_F19: 130,
 		DOM_VK_F20: 131,
 		DOM_VK_F21: 132,
-		DOM_VK_F22: 133, 
+		DOM_VK_F22: 133,
 		DOM_VK_F23: 134,
 		DOM_VK_F24: 135,
 		DOM_VK_NUM_LOCK: 144,
@@ -907,7 +907,7 @@ if (isundef(KeyEvent)) {
 
 //
 // Sound.
-// 
+//
 
 var Sound = (function () {
 
@@ -947,15 +947,15 @@ var Sound = (function () {
 			log('The status is ' + status.success + ', the error type is ' + status.error.type);
 		}
 	});
-	
+
 	var SoundSingleton = Class.extend({
 		init: function () {},
-		
+
 		setsounds: function (soundnames) {
 			soundstoload = soundnames;
 			Sound.loadsounds();
 		},
-		
+
 		loadsounds: function () {
 			if (!audioready) {
 				return;
@@ -972,11 +972,11 @@ var Sound = (function () {
 			});
 			soundstoload = [];
 		},
-		
+
 		push: function (s) {
 			soundstoplay.push(s);
 		},
-		
+
 		playall: function () {
 			soundstoplay.each(function (sound) {
 				if (sounds[sound]) {
@@ -986,6 +986,6 @@ var Sound = (function () {
 			soundstoplay = [];
 		}
 	});
-	
+
 	return new SoundSingleton();
 })();
